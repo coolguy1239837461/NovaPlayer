@@ -7,6 +7,7 @@ window.HostModule = (function() {
     let selectedSwf = null;
     let gameStarted = false;
     let clientCursorEnabled = false;
+    let capturedAudioTracks = [];
     let players = new Map();
     let hostMapping = createDefaultMapping();
     let hostMappingDraft = null;
@@ -398,6 +399,32 @@ window.HostModule = (function() {
         const launchBtn = document.getElementById('host-launch-game-btn');
         if (launchBtn) launchBtn.disabled = true;
         renderPlayers();
+
+        const audioToggle = document.getElementById('host-audio-toggle');
+        capturedAudioTracks = [];
+        if (audioToggle && audioToggle.checked) {
+            if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+                try {
+                    if (window.NovaApp) window.NovaApp.setStatus('Choose this browser tab and enable tab audio in the share prompt.');
+                    const capture = await navigator.mediaDevices.getDisplayMedia({
+                        video: true,
+                        audio: true,
+                        preferCurrentTab: true
+                    });
+                    capturedAudioTracks = capture.getAudioTracks();
+                    capture.getVideoTracks().forEach((track) => track.stop());
+                    if (!capturedAudioTracks.length && window.NovaApp) {
+                        window.NovaApp.setStatus('No tab audio track was shared; starting video only.');
+                    }
+                } catch (error) {
+                    console.warn('Host tab audio capture was not granted:', error);
+                    if (window.NovaApp) window.NovaApp.setStatus(`Audio capture unavailable; starting video only (${error.name || 'permission denied'}).`);
+                }
+            } else if (window.NovaApp) {
+                window.NovaApp.setStatus('This browser does not support tab audio capture; starting video only.');
+            }
+        }
+
         sendToClients({ type: 'GAME_STARTED' });
 
         if (window.NovaApp && window.NovaApp.loadFlashView) {
@@ -405,9 +432,11 @@ window.HostModule = (function() {
         }
         renderControlDashboard();
         if (window.FlashModule && window.FlashModule.setupHostStream) {
-            await window.FlashModule.setupHostStream(selectedSwf, selectedFilesMap);
+            await window.FlashModule.setupHostStream(selectedSwf, selectedFilesMap, capturedAudioTracks);
             players.forEach((player, clientId) => window.FlashModule.addViewer(clientId, hostPeer));
         } else if (window.NovaApp) {
+            capturedAudioTracks.forEach((track) => track.stop());
+            capturedAudioTracks = [];
             window.NovaApp.setStatus('Flash player is unavailable; could not start the game.');
         }
     }
@@ -449,6 +478,8 @@ window.HostModule = (function() {
         players.clear();
         controlDrafts.clear();
         clientCursorEnabled = false;
+        capturedAudioTracks.forEach((track) => track.stop());
+        capturedAudioTracks = [];
         document.removeEventListener('change', handleCursorInputToggle);
         window.removeEventListener('keydown', handleHostKey);
         window.removeEventListener('keyup', handleHostKey);

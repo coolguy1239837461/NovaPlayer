@@ -205,6 +205,14 @@
 
 .host-cursor-control input { accent-color: #00ffcc; }
 
+.host-audio-control { margin-top: 8px; }
+
+.host-audio-note {
+    margin: 5px 0 12px;
+    color: #888;
+    font: 11px monospace;
+}
+
 .mapping-editor {
     margin: 12px 0 16px;
     padding-bottom: 12px;

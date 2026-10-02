@@ -5,6 +5,7 @@ window.FlashModule = (function() {
     const fileObjectsMap = new Map();
     const assetBlobUrls = new Map();
     let outboundStream = null;
+    let activeAudioTracks = [];
     const viewerConnections = new Map();
 
     function init() {
@@ -84,7 +85,7 @@ window.FlashModule = (function() {
         }
     }
 
-    async function setupHostStream(mainSwfEntry, selectedFilesMap) {
+    async function setupHostStream(mainSwfEntry, selectedFilesMap, audioTracks = []) {
         const flashContainer = document.getElementById('flash-container');
         if (!flashContainer || !mainSwfEntry) return;
         if (!window.RufflePlayer) {
@@ -92,6 +93,7 @@ window.FlashModule = (function() {
             return;
         }
 
+        activeAudioTracks = audioTracks.filter((track) => track.readyState === 'live');
         installAssetFetch(selectedFilesMap);
         activeSwfUrl = getOrCreateBlobUrl(mainSwfEntry.name.toLowerCase());
         if (!activeSwfUrl) {
@@ -103,13 +105,17 @@ window.FlashModule = (function() {
         }
         await new Promise((resolve) => {
             loadSwf(activeSwfUrl, (canvas) => {
-                if (canvas && canvas.captureStream) outboundStream = canvas.captureStream(30);
+                if (canvas && canvas.captureStream) {
+                    outboundStream = canvas.captureStream(30);
+                    activeAudioTracks.forEach((track) => outboundStream.addTrack(track));
+                }
                 resolve();
             });
             window.setTimeout(resolve, 16000);
         });
         if (outboundStream) {
-            if (window.NovaApp) window.NovaApp.setStatus(`Running ${mainSwfEntry.name}; game feed is ready for players.`);
+            const hasAudio = outboundStream.getAudioTracks().length > 0;
+            if (window.NovaApp) window.NovaApp.setStatus(`Running ${mainSwfEntry.name}; game feed is ready for players${hasAudio ? ' with tab audio' : ''}.`);
         } else if (window.NovaApp) {
             window.NovaApp.setStatus(`Running ${mainSwfEntry.name} on the host. This Ruffle player does not expose a capturable canvas, so clients cannot receive video.`);
         }
@@ -262,6 +268,8 @@ window.FlashModule = (function() {
             outboundStream.getTracks().forEach((track) => track.stop());
             outboundStream = null;
         }
+        activeAudioTracks.forEach((track) => track.stop());
+        activeAudioTracks = [];
         assetBlobUrls.forEach((url) => URL.revokeObjectURL(url));
         assetBlobUrls.clear();
         activeSwfUrl = null;

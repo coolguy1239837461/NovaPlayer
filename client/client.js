@@ -117,7 +117,11 @@ window.ClientModule = (function() {
         call.answer();
         call.on('stream', (stream) => {
             const video = document.getElementById('remote-video');
-            if (video) video.srcObject = stream;
+            if (video) {
+                video.srcObject = stream;
+                video.muted = false;
+                playRemoteStream(video, stream);
+            }
             if (window.FlashModule && window.FlashModule.showRemoteVideo) {
                 window.FlashModule.showRemoteVideo();
             }
@@ -127,6 +131,32 @@ window.ClientModule = (function() {
             console.error('Host video stream error:', error);
             if (window.NovaApp) window.NovaApp.setStatus('The host video stream could not be opened.');
         });
+    }
+
+    async function playRemoteStream(video, stream) {
+        const enableAudio = document.getElementById('client-enable-audio');
+        if (enableAudio) {
+            enableAudio.hidden = stream.getAudioTracks().length === 0;
+            enableAudio.onclick = async () => {
+                video.muted = false;
+                try {
+                    await video.play();
+                    enableAudio.hidden = true;
+                    if (window.NovaApp) window.NovaApp.setStatus('Stream audio enabled.');
+                } catch (error) {
+                    if (window.NovaApp) window.NovaApp.setStatus(`Could not start stream audio: ${error.message}`);
+                }
+            };
+        }
+        try {
+            await video.play();
+            if (enableAudio && stream.getAudioTracks().length) enableAudio.hidden = true;
+        } catch (error) {
+            if (enableAudio && stream.getAudioTracks().length) enableAudio.hidden = false;
+            if (window.NovaApp) window.NovaApp.setStatus(stream.getAudioTracks().length
+                ? 'Stream connected. Press Enable sound if audio is blocked.'
+                : 'Receiving the live game video. The host did not share audio.');
+        }
     }
 
     function sendControlInput(event) {
