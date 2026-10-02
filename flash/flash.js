@@ -192,19 +192,31 @@ window.FlashModule = (function() {
     function sendGameKey(key, pressed) {
         if (!activePlayer || typeof key !== 'string' || !key) return;
         const normalizedKey = key.length === 1 ? key.toLowerCase() : key;
-        const keyCodes = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
+        const keyCodes = {
+            ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
+            Enter: 13, Escape: 27, Backspace: 8, Tab: 9, ' ': 32,
+            "'": 222, '[': 219, ']': 221, ';': 186, '=': 187, '-': 189,
+            '\\': 220, ',': 188, '.': 190, '/': 191, '`': 192
+        };
+        const keyCodesBySymbol = {
+            "'": 'Quote', '[': 'BracketLeft', ']': 'BracketRight', ';': 'Semicolon',
+            '=': 'Equal', '-': 'Minus', '\\': 'Backslash', ',': 'Comma',
+            '.': 'Period', '/': 'Slash', '`': 'Backquote'
+        };
         const code = normalizedKey.startsWith('Arrow')
             ? normalizedKey
-            : /^[a-z]$/.test(normalizedKey) ? `Key${normalizedKey.toUpperCase()}`
+            : keyCodesBySymbol[normalizedKey] || (/^[a-z]$/.test(normalizedKey)
+                ? `Key${normalizedKey.toUpperCase()}`
                 : /^[0-9]$/.test(normalizedKey) ? `Digit${normalizedKey}`
-                    : normalizedKey === ' ' ? 'Space' : normalizedKey;
+                    : normalizedKey === ' ' ? 'Space' : normalizedKey);
+        const legacyKeyCode = keyCodes[normalizedKey] || (normalizedKey.length === 1 ? normalizedKey.toUpperCase().charCodeAt(0) : 0);
         const canvas = activePlayer.shadowRoot?.querySelector('canvas') || activePlayer;
         if (canvas.focus) canvas.focus({ preventScroll: true });
         canvas.dispatchEvent(new KeyboardEvent(pressed ? 'keydown' : 'keyup', {
             key: normalizedKey,
             code,
-            keyCode: keyCodes[normalizedKey] || (normalizedKey.length === 1 ? normalizedKey.toUpperCase().charCodeAt(0) : 0),
-            which: keyCodes[normalizedKey] || (normalizedKey.length === 1 ? normalizedKey.toUpperCase().charCodeAt(0) : 0),
+            keyCode: legacyKeyCode,
+            which: legacyKeyCode,
             bubbles: true,
             composed: true,
             cancelable: true
@@ -213,22 +225,21 @@ window.FlashModule = (function() {
 
     function sendPointerInput(input) {
         const canvas = activePlayer?.shadowRoot?.querySelector('canvas') || activePlayer;
-        if (!canvas || !input || !['pointermove', 'pointerdown', 'pointerup'].includes(input.eventType)) return;
+        if (!canvas || !input || !['mousemove', 'mousedown', 'mouseup', 'click', 'contextmenu'].includes(input.eventType)) return;
         const bounds = canvas.getBoundingClientRect();
         const clientX = bounds.left + input.x * bounds.width;
         const clientY = bounds.top + input.y * bounds.height;
         if (canvas.focus) canvas.focus({ preventScroll: true });
-        canvas.dispatchEvent(new PointerEvent(input.eventType, {
+        canvas.dispatchEvent(new MouseEvent(input.eventType, {
             bubbles: true,
             composed: true,
             cancelable: true,
-            pointerId: 1,
-            pointerType: input.pointerType || 'mouse',
-            isPrimary: true,
+            view: window,
             clientX,
             clientY,
             button: input.button ?? 0,
-            buttons: input.buttons ?? 0
+            buttons: input.buttons ?? 0,
+            detail: input.eventType === 'click' ? 1 : 0
         }));
     }
 

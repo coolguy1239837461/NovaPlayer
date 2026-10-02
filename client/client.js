@@ -20,6 +20,8 @@ window.ClientModule = (function() {
         window.addEventListener('pointermove', sendPointerInput);
         window.addEventListener('pointerdown', sendPointerInput);
         window.addEventListener('pointerup', sendPointerInput);
+        window.addEventListener('click', sendPointerInput);
+        window.addEventListener('contextmenu', sendPointerInput);
         bindControlUI();
 
         if (window.NovaApp && window.NovaApp.setStatus) {
@@ -131,7 +133,7 @@ window.ClientModule = (function() {
         if (!clientConnection || !clientConnection.open || event.repeat) return;
         if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, button')) return;
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-        const binding = Object.values(playerMapping).find((item) => item.input === key);
+        const binding = playerMapping.find((item) => item.input === key);
         if (!binding) return;
         event.preventDefault();
         clientConnection.send({ type: 'CONTROL_INPUT', key: binding.output, pressed: event.type === 'keydown' });
@@ -141,10 +143,11 @@ window.ClientModule = (function() {
         if (!hostAllowsCursor || !clientConnection || !clientConnection.open || !flashReady) return;
         const video = document.getElementById('remote-video');
         if (!video || !video.videoWidth || !video.videoHeight) return;
-        if (event.type === 'pointerdown' && event.target === video && video.setPointerCapture) {
+        if (event.target !== video) return;
+        if (event.type === 'contextmenu') event.preventDefault();
+        if (event.type === 'pointerdown' && video.setPointerCapture) {
             video.setPointerCapture(event.pointerId);
         }
-        if (event.target !== video) return;
         const bounds = video.getBoundingClientRect();
         const scale = Math.min(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
         const contentWidth = video.videoWidth * scale;
@@ -156,11 +159,20 @@ window.ClientModule = (function() {
         if (x < 0 || x > 1 || y < 0 || y > 1) return;
 
         const now = performance.now();
-        if (event.type === 'pointermove' && now - lastPointerSentAt < 33) return;
-        lastPointerSentAt = now;
+        if (event.type === 'pointermove') {
+            if (now - lastPointerSentAt < 16) return;
+            lastPointerSentAt = now;
+        }
+        const eventTypes = {
+            pointermove: 'mousemove',
+            pointerdown: 'mousedown',
+            pointerup: 'mouseup',
+            click: 'click',
+            contextmenu: 'contextmenu'
+        };
         clientConnection.send({
             type: 'CONTROL_POINTER',
-            eventType: event.type,
+            eventType: eventTypes[event.type],
             x,
             y,
             button: event.button,
@@ -170,26 +182,28 @@ window.ClientModule = (function() {
     }
 
     function createDefaultMapping() {
-        return {
-            up: { input: 'w', output: 'ArrowUp' },
-            down: { input: 's', output: 'ArrowDown' },
-            left: { input: 'a', output: 'ArrowLeft' },
-            right: { input: 'd', output: 'ArrowRight' },
-            jump: { input: 'j', output: 'z' },
-            action: { input: 'k', output: 'x' }
-        };
+        return [
+            { id: 'up', name: 'Up', input: 'w', output: 'ArrowUp' },
+            { id: 'left', name: 'Left', input: 'a', output: 'ArrowLeft' },
+            { id: 'down', name: 'Down', input: 's', output: 'ArrowDown' },
+            { id: 'right', name: 'Right', input: 'd', output: 'ArrowRight' }
+        ];
     }
 
     function cloneMapping(mapping) {
-        const fallback = createDefaultMapping();
-        if (!mapping || typeof mapping !== 'object') return fallback;
-        for (const action of Object.keys(fallback)) {
-            const binding = mapping[action];
-            if (binding && typeof binding.input === 'string' && typeof binding.output === 'string') {
-                fallback[action] = { input: binding.input, output: binding.output };
-            }
-        }
-        return fallback;
+        const rows = Array.isArray(mapping)
+            ? mapping
+            : Object.entries(mapping || {}).map(([name, binding]) => ({ id: name, name, ...binding }));
+        return rows.filter((row) => row && typeof row === 'object').map((row, index) => ({
+            id: typeof row.id === 'string' && row.id ? row.id : `control-${index + 1}`,
+            name: typeof row.name === 'string' ? row.name : `Control ${index + 1}`,
+            input: typeof row.input === 'string' ? normalizeKey(row.input) : '',
+            output: typeof row.output === 'string' ? normalizeKey(row.output) : ''
+        }));
+    }
+
+    function normalizeKey(key) {
+        return key.length === 1 ? key.toLowerCase() : key;
     }
 
     function formatKey(key) {
@@ -211,15 +225,22 @@ window.ClientModule = (function() {
         const list = document.getElementById('client-control-change-list');
         if (!overlay || !list) return;
         list.innerHTML = '';
-        const actionLabels = { up: 'Up', down: 'Down', left: 'Left', right: 'Right', jump: 'Jump', action: 'Action' };
-        Object.keys(actionLabels).forEach((action) => {
-            const before = playerMapping[action];
-            const after = pendingControlChange.mapping[action];
-            if (before.input === after.input && before.output === after.output) return;
+        const oldBindings = new Map(playerMapping.map((binding) => [binding.id, binding]));
+        const newIds = new Set(pendingControlChange.mapping.map((binding) => binding.id));
+        pendingControlChange.mapping.forEach((after) => {
+            const before = oldBindings.get(after.id);
+            if (before && before.name === after.name && before.input === after.input && before.output === after.output) return;
             const item = document.createElement('li');
             const code = document.createElement('code');
-            code.textContent = `${formatKey(after.input)} (${actionLabels[action]}) → ${formatKey(after.output)}`;
+            const oldKey = before && before.input !== after.input ? `${formatKey(before.input)} → ` : '';
+            code.textContent = `${oldKey}${formatKey(after.input)} (${after.name}) → ${formatKey(after.output)}`;
             item.appendChild(code);
+            list.appendChild(item);
+        });
+        playerMapping.forEach((before) => {
+            if (newIds.has(before.id)) return;
+            const item = document.createElement('li');
+            item.textContent = `Remove ${before.name} (${formatKey(before.input)} → ${formatKey(before.output)})`;
             list.appendChild(item);
         });
         if (!list.children.length) {
@@ -291,6 +312,8 @@ window.ClientModule = (function() {
         window.removeEventListener('pointermove', sendPointerInput);
         window.removeEventListener('pointerdown', sendPointerInput);
         window.removeEventListener('pointerup', sendPointerInput);
+        window.removeEventListener('click', sendPointerInput);
+        window.removeEventListener('contextmenu', sendPointerInput);
         clientId = null;
         flashReady = false;
         pendingCall = null;

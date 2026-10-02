@@ -231,7 +231,7 @@
 
 .mapping-row {
     display: grid;
-    grid-template-columns: minmax(55px, 1fr) minmax(72px, 1fr) minmax(72px, 1fr);
+    grid-template-columns: minmax(95px, 1.2fr) minmax(70px, 0.8fr) minmax(70px, 0.8fr) 30px;
     align-items: center;
     gap: 8px;
     color: #bbb;
@@ -256,6 +256,35 @@
     outline-offset: 1px;
 }
 
+.mapping-row .mapping-function-input {
+    text-align: left;
+    cursor: text;
+}
+
+.mapping-row .mapping-key-input { text-align: center; }
+
+.mapping-remove-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #222;
+    color: #ff8888;
+    font: 18px monospace;
+    cursor: pointer;
+}
+
+.mapping-remove-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.mapping-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.mapping-import-label { display: inline-block; }
+
 .mapping-heading-row {
     color: #888;
     font-size: 10px;
@@ -275,6 +304,11 @@
 .mapping-apply-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+    .mapping-row { grid-template-columns: minmax(72px, 1.1fr) minmax(55px, 0.8fr) minmax(55px, 0.8fr) 28px; gap: 5px; }
+    .mapping-row input { padding: 6px 4px; font-size: 11px; }
 }
 
 .status-indicator {

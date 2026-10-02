@@ -8,15 +8,7 @@ window.HostModule = (function() {
     let gameStarted = false;
     let clientCursorEnabled = false;
     let players = new Map();
-    const controlActions = [
-        ['up', 'Up'],
-        ['down', 'Down'],
-        ['left', 'Left'],
-        ['right', 'Right'],
-        ['jump', 'Jump'],
-        ['action', 'Action']
-    ];
-    let hostMapping = createDefaultMapping(1);
+    let hostMapping = createDefaultMapping();
     let hostMappingDraft = null;
     const controlDrafts = new Map();
 
@@ -462,22 +454,25 @@ window.HostModule = (function() {
         window.removeEventListener('keyup', handleHostKey);
     }
 
-    function createDefaultMapping(slot) {
-        const keys = slot === 1
-            ? { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', jump: 'z', action: 'x' }
-            : { up: 'w', down: 's', left: 'a', right: 'd', jump: 'j', action: 'k' };
-        const outputs = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', jump: 'z', action: 'x' };
-        return Object.fromEntries(controlActions.map(([action]) => [action, {
-            input: keys[action],
-            output: outputs[action]
-        }]));
+    function createDefaultMapping() {
+        return [
+            { id: 'up', name: 'Up', input: 'w', output: 'ArrowUp' },
+            { id: 'left', name: 'Left', input: 'a', output: 'ArrowLeft' },
+            { id: 'down', name: 'Down', input: 's', output: 'ArrowDown' },
+            { id: 'right', name: 'Right', input: 'd', output: 'ArrowRight' }
+        ];
     }
 
     function cloneMapping(mapping) {
-        return Object.fromEntries(controlActions.map(([action]) => [action, {
-            input: mapping[action].input,
-            output: mapping[action].output
-        }]));
+        const rows = Array.isArray(mapping)
+            ? mapping
+            : Object.entries(mapping || {}).map(([name, binding]) => ({ id: name, name, ...binding }));
+        return rows.filter((row) => row && typeof row === 'object').map((row, index) => ({
+            id: typeof row.id === 'string' && row.id ? row.id : `control-${index + 1}`,
+            name: typeof row.name === 'string' ? row.name : `Control ${index + 1}`,
+            input: typeof row.input === 'string' ? normalizeKey(row.input) : '',
+            output: typeof row.output === 'string' ? normalizeKey(row.output) : ''
+        }));
     }
 
     function normalizeKey(key) {
@@ -492,7 +487,7 @@ window.HostModule = (function() {
         if (!gameStarted || !selectedSwf || event.repeat) return;
         if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, button')) return;
         const inputKey = normalizeKey(event.key);
-        const binding = Object.values(hostMapping).find((item) => item.input === inputKey);
+        const binding = hostMapping.find((item) => item.input === inputKey);
         if (!binding) return;
         event.preventDefault();
         if (window.FlashModule && window.FlashModule.sendGameKey) {
@@ -501,10 +496,11 @@ window.HostModule = (function() {
     }
 
     function renderControlDashboard() {
-        renderMappingEditor(document.getElementById('host-own-control-mappings'), 'Host controls', hostMapping, {
+        const currentHostMapping = hostMappingDraft || hostMapping;
+        renderMappingEditor(document.getElementById('host-own-control-mappings'), 'Host controls', currentHostMapping, {
             kind: 'host'
         });
-        renderMappingEditor(document.getElementById('host-game-own-control-mappings'), 'Host controls', hostMapping, {
+        renderMappingEditor(document.getElementById('host-game-own-control-mappings'), 'Host controls', currentHostMapping, {
             kind: 'host'
         });
         const playerTargets = [
@@ -536,6 +532,7 @@ window.HostModule = (function() {
     function renderMappingEditor(target, title, mapping, context) {
         if (!target) return;
         if (context.kind === 'host') target.innerHTML = '';
+        const bindings = cloneMapping(mapping);
         const section = document.createElement('section');
         section.className = 'mapping-editor';
         const heading = document.createElement('h4');
@@ -554,43 +551,95 @@ window.HostModule = (function() {
         table.className = 'mapping-table';
         const header = document.createElement('div');
         header.className = 'mapping-row mapping-heading-row';
-        ['Action', 'Input key', 'Game key'].forEach((label) => {
+        ['Function', 'Pressed key', 'Game key', ''].forEach((label) => {
             const cell = document.createElement('span');
             cell.textContent = label;
             header.appendChild(cell);
         });
         table.appendChild(header);
-        for (const [action, label] of controlActions) {
+        for (const binding of bindings) {
             const row = document.createElement('div');
             row.className = 'mapping-row';
-            const actionLabel = document.createElement('span');
-            actionLabel.textContent = label;
-            row.appendChild(actionLabel);
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'mapping-function-input';
+            nameInput.value = binding.name;
+            nameInput.setAttribute('aria-label', `${title} function name`);
+            nameInput.placeholder = 'Function';
+            nameInput.oninput = () => {
+                const next = getMappingDraft(context, mapping);
+                const edited = next.find((item) => item.id === binding.id);
+                if (edited) edited.name = nameInput.value;
+                setMappingDraft(context, next);
+            };
+            row.appendChild(nameInput);
             for (const field of ['input', 'output']) {
                 const input = document.createElement('input');
                 input.type = 'text';
+                input.className = 'mapping-key-input';
                 input.readOnly = true;
-                input.value = formatKey(mapping[action][field]);
-                input.setAttribute('aria-label', `${title} ${label} ${field === 'input' ? 'input' : 'game key'}`);
+                input.value = formatKey(binding[field]);
+                input.setAttribute('aria-label', `${title} ${binding.name} ${field === 'input' ? 'pressed key' : 'game key'}`);
                 input.title = 'Click, then press a key';
                 input.addEventListener('keydown', (event) => {
                     if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta') return;
                     event.preventDefault();
                     event.stopPropagation();
                     const key = normalizeKey(event.key);
-                    const next = context.kind === 'host'
-                        ? (hostMappingDraft || cloneMapping(hostMapping))
-                        : (controlDrafts.get(context.clientId) || cloneMapping(players.get(context.clientId).mapping));
-                    next[action][field] = key;
+                    const next = getMappingDraft(context, mapping);
+                    const edited = next.find((item) => item.id === binding.id);
+                    if (!edited) return;
+                    edited[field] = key;
                     input.value = formatKey(key);
-                    if (context.kind === 'host') hostMappingDraft = next;
-                    else controlDrafts.set(context.clientId, next);
+                    setMappingDraft(context, next);
                 });
                 row.appendChild(input);
             }
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'mapping-remove-btn';
+            remove.textContent = '×';
+            remove.title = `Remove ${binding.name}`;
+            remove.setAttribute('aria-label', `Remove ${binding.name}`);
+            remove.disabled = Boolean(context.pending);
+            remove.onclick = () => {
+                const next = getMappingDraft(context, mapping).filter((item) => item.id !== binding.id);
+                setMappingDraft(context, next);
+                renderControlDashboard();
+            };
+            row.appendChild(remove);
             table.appendChild(row);
         }
         section.appendChild(table);
+        const tools = document.createElement('div');
+        tools.className = 'mapping-tools';
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'mapping-apply-btn';
+        add.textContent = 'Add Control';
+        add.disabled = Boolean(context.pending);
+        add.onclick = () => {
+            const next = getMappingDraft(context, mapping);
+            next.push({ id: createControlId(), name: 'New function', input: '', output: '' });
+            setMappingDraft(context, next);
+            renderControlDashboard();
+        };
+        const download = document.createElement('button');
+        download.type = 'button';
+        download.className = 'mapping-apply-btn';
+        download.textContent = 'Download Config';
+        download.onclick = () => downloadMappingConfig(title, getMappingDraft(context, mapping));
+        const importLabel = document.createElement('label');
+        importLabel.className = 'mapping-apply-btn mapping-import-label';
+        importLabel.textContent = 'Load Config';
+        const importInput = document.createElement('input');
+        importInput.type = 'file';
+        importInput.accept = 'application/json,.json';
+        importInput.hidden = true;
+        importInput.onchange = (event) => importMappingConfig(event, context);
+        importLabel.appendChild(importInput);
+        tools.append(add, download, importLabel);
+        section.appendChild(tools);
         const apply = document.createElement('button');
         apply.type = 'button';
         apply.className = 'mapping-apply-btn';
@@ -601,8 +650,60 @@ window.HostModule = (function() {
         target.appendChild(section);
     }
 
+    function createControlId() {
+        return `control-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    function getMappingDraft(context, fallback) {
+        if (context.kind === 'host') return cloneMapping(hostMappingDraft || fallback || hostMapping);
+        return cloneMapping(controlDrafts.get(context.clientId) || fallback || players.get(context.clientId).mapping);
+    }
+
+    function setMappingDraft(context, mapping) {
+        if (context.kind === 'host') hostMappingDraft = mapping;
+        else controlDrafts.set(context.clientId, mapping);
+    }
+
+    function mappingIsValid(mapping) {
+        return mapping.length > 0 && mapping.every((binding) => binding.name.trim() && binding.input && binding.output);
+    }
+
+    function downloadMappingConfig(title, mapping) {
+        const config = { format: 'novaplayer-controls', version: 1, mapping: cloneMapping(mapping) };
+        const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-controls.json`;
+        link.click();
+        URL.revokeObjectURL(blobUrl);
+        if (window.NovaApp) window.NovaApp.setStatus(`Downloaded ${title} control config.`);
+    }
+
+    async function importMappingConfig(event, context) {
+        const input = event.currentTarget;
+        const file = input.files && input.files[0];
+        input.value = '';
+        if (!file) return;
+        try {
+            const parsed = JSON.parse(await file.text());
+            const mapping = cloneMapping(parsed.mapping || parsed.controls || parsed);
+            if (!mappingIsValid(mapping)) throw new Error('Config needs named controls with both keys assigned.');
+            setMappingDraft(context, mapping);
+            if (context.kind === 'host') hostMappingDraft = mapping;
+            renderControlDashboard();
+            applyMapping(context);
+        } catch (error) {
+            console.error('Could not import control config:', error);
+            if (window.NovaApp) window.NovaApp.setStatus(`Could not import controls: ${error.message}`);
+        }
+    }
+
     function applyMapping(context) {
         if (context.kind === 'host') {
+            if (hostMappingDraft && !mappingIsValid(hostMappingDraft)) {
+                if (window.NovaApp) window.NovaApp.setStatus('Every control needs a function name, pressed key, and game key.');
+                return;
+            }
             if (hostMappingDraft) hostMapping = cloneMapping(hostMappingDraft);
             hostMappingDraft = null;
             renderControlDashboard();
@@ -611,6 +712,10 @@ window.HostModule = (function() {
         const player = players.get(context.clientId);
         const draft = controlDrafts.get(context.clientId);
         if (!player || !draft || player.pendingChange) return;
+        if (!mappingIsValid(draft)) {
+            if (window.NovaApp) window.NovaApp.setStatus('Every control needs a function name, pressed key, and game key.');
+            return;
+        }
         if (!gameStarted) {
             player.mapping = cloneMapping(draft);
             controlDrafts.delete(context.clientId);
