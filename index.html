@@ -153,6 +153,7 @@
     </style>
     <!-- Ruffle Flash Engine -->
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -207,10 +208,19 @@
                 if (sb) sb.innerText = "Status: " + msg;
             }
 
-            async function fetchAsset(path) {
+            async function fetchAsset(path, preferGitHub = false) {
                 const cacheBuster = `?t=${Date.now()}`;
                 const githubUrl = `${RAW_BASE_URL}/${path}${cacheBuster}`;
-                
+
+                if (!preferGitHub) {
+                    try {
+                        const localResponse = await fetch(`./${path}${cacheBuster}`);
+                        if (localResponse.ok) return await localResponse.text();
+                    } catch (err) {
+                        console.warn(`[NovaPlayer] Could not load local ${path} (${err.message}). Trying GitHub...`);
+                    }
+                }
+
                 try {
                     const response = await fetch(githubUrl);
                     if (response.ok) {
@@ -219,7 +229,6 @@
                     throw new Error(`GitHub fetch status ${response.status}`);
                 } catch (err) {
                     console.warn(`[NovaPlayer] Could not fetch ${path} from GitHub (${err.message}). Trying relative local path...`);
-                    // Fallback to local relative path if offline or prior to commit
                     const localResponse = await fetch(`./${path}${cacheBuster}`);
                     if (!localResponse.ok) {
                         throw new Error(`Failed to load ${path} locally or from GitHub.`);
@@ -228,13 +237,13 @@
                 }
             }
 
-            async function loadModule(roleName) {
-                setStatus(`Fetching '${roleName}' assets from GitHub repository...`);
+            async function loadModule(roleName, preferGitHub = false) {
+                setStatus(`Loading '${roleName}' assets...`);
                 
                 try {
-                    const htmlText = await fetchAsset(`${roleName}/${roleName}.html`);
-                    const cssText = await fetchAsset(`${roleName}/${roleName}.css`);
-                    const jsText = await fetchAsset(`${roleName}/${roleName}.js`);
+                    const htmlText = await fetchAsset(`${roleName}/${roleName}.html`, preferGitHub);
+                    const cssText = await fetchAsset(`${roleName}/${roleName}.css`, preferGitHub);
+                    const jsText = await fetchAsset(`${roleName}/${roleName}.js`, preferGitHub);
 
                     // Inject CSS
                     document.getElementById('active-module-style').textContent = cssText;
@@ -263,7 +272,7 @@
                         window.ClientModule.init();
                     }
 
-                    setStatus(`'${roleName.toUpperCase()}' assets updated & loaded live from GitHub repository!`);
+                    setStatus(`'${roleName.toUpperCase()}' assets loaded${preferGitHub ? ' from GitHub' : ' from this workspace'}.`);
                 } catch (err) {
                     console.error(err);
                     setStatus(`Error loading module '${roleName}': ${err.message}`);
@@ -284,7 +293,7 @@
 
             async function refreshCurrentModule() {
                 setStatus(`Refreshing assets for ${currentRole} from GitHub...`);
-                await loadModule(currentRole);
+                await loadModule(currentRole, true);
             }
 
             async function loadFlashView(isClient) {
@@ -297,6 +306,7 @@
                     document.getElementById('flash-module-style').textContent = cssText;
                     const flashBox = document.getElementById('flash-module-container');
                     flashBox.innerHTML = htmlText;
+                    flashBox.dataset.role = isClient ? 'client' : 'host';
                     flashBox.style.display = 'block';
 
                     const scriptEl = document.createElement('script');

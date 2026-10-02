@@ -29,6 +29,21 @@
             <span id="host-peer-status">Waiting for client connection...</span>
         </div>
 
+        <section class="lobby-players" aria-labelledby="lobby-players-title">
+            <h4 id="lobby-players-title">Players</h4>
+            <ul id="host-player-list" aria-live="polite">
+                <li class="empty-player-list">Waiting for players to join</li>
+            </ul>
+        </section>
+
+        <section class="host-controls-dashboard" aria-labelledby="host-controls-title">
+            <h4 id="host-controls-title">Control mappings</h4>
+            <div id="host-own-control-mappings"></div>
+            <div id="host-player-control-mappings"></div>
+        </section>
+
+        <button class="action-btn" id="host-launch-game-btn">Start Game</button>
+
         <button class="action-btn danger-btn" id="host-stop-btn">End Session</button>
     </div>
 </div>

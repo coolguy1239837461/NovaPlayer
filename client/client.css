@@ -53,3 +53,16 @@
 .client-container input[type="text"]:focus {
     border-color: #00ffcc;
 }
+
+.client-control-lock {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    color: #ccc;
+    font: 12px monospace;
+}
+
+.client-control-lock input {
+    accent-color: #00ffcc;
+}

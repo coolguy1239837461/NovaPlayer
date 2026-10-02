@@ -1,4 +1,34 @@
 <div id="game-view" class="game-view">
+    <button id="host-end-game-btn" class="host-end-game-btn" type="button">End Session</button>
+    <button id="host-controls-button" class="host-controls-button" type="button">Controls</button>
+    <aside id="host-controls-panel" class="host-controls-panel" hidden>
+        <div class="host-controls-panel-header">
+            <h3>Control mappings</h3>
+            <button id="host-controls-close" type="button" aria-label="Close control mappings">×</button>
+        </div>
+        <div id="host-game-own-control-mappings"></div>
+        <div id="host-game-player-control-mappings"></div>
+    </aside>
+    <label class="client-game-control-lock">
+        <input id="client-game-controls-locked" type="checkbox">
+        <span>Lock My Controls</span>
+    </label>
+    <div id="client-control-change-overlay" class="client-control-change-overlay" hidden>
+        <section class="client-control-change-dialog" role="dialog" aria-modal="true" aria-labelledby="control-change-title">
+            <h2 id="control-change-title">⚠️ CONTROL CHANGE REQUEST</h2>
+            <p>The host is attempting to modify your controls:</p>
+            <ul id="client-control-change-list"></ul>
+            <label class="client-control-lock">
+                <input id="client-prompt-controls-locked" type="checkbox">
+                <span>Lock My Controls</span>
+            </label>
+            <p id="client-control-lock-note" class="client-control-lock-note" hidden>Your controls are locked. Unlock them to accept this request.</p>
+            <div class="control-change-actions">
+                <button id="client-control-accept" type="button">Accept Changes</button>
+                <button id="client-control-decline" type="button">Decline &amp; Keep Current</button>
+            </div>
+        </section>
+    </div>
     <div id="flash-container" class="flash-container"></div>
     <div id="remote-video-container" class="remote-video-container">
         <div id="waiting-screen" class="waiting-screen">
