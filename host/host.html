@@ -1,7 +1,7 @@
 <div class="host-container" id="host-setup-card">
     <div class="panel-card">
         <h3>🖥️ Host Setup (Mac)</h3>
-        <p>Select your game folder containing your main <code>.swf</code> file and assets.</p>
+        <p>Select the game folder, generate a room code, then start Ruffle when you are ready to broadcast.</p>
 
         <div class="form-group">
             <div class="folder-dropzone" id="host-folder-dropzone">
@@ -23,14 +23,14 @@
             <select id="swf-file-select" class="dropdown-select"></select>
         </div>
 
-        <button class="action-btn" id="host-start-btn" disabled>Start Hosting Session</button>
+        <button class="action-btn" id="host-start-btn" disabled>1. Generate Room Code</button>
     </div>
 </div>
 
 <div class="host-container" id="host-active-card" style="display:none;">
     <div class="panel-card">
         <h3>⚡ Host Live Session</h3>
-        <p>Share this Room Code with the Chromebook client:</p>
+        <p>Share this code with real clients before starting the game:</p>
         
         <div class="room-code-display" id="active-room-code">----</div>
         
@@ -52,7 +52,7 @@
             <div id="host-player-control-mappings"></div>
         </section>
 
-        <button class="action-btn" id="host-launch-game-btn">Start Game</button>
+        <button class="action-btn" id="host-launch-game-btn">2. Load Ruffle &amp; Broadcast Game</button>
 
         <button class="action-btn danger-btn" id="host-stop-btn">End Session</button>
     </div>
