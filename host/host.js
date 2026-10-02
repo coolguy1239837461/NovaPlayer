@@ -20,11 +20,13 @@ window.HostModule = (function() {
 
     function init() {
         const folderBtn = document.getElementById('host-select-folder-btn');
+        const folderInput = document.getElementById('host-folder-fallback');
         const startBtn = document.getElementById('host-start-btn');
         const stopBtn = document.getElementById('host-stop-btn');
         const launchBtn = document.getElementById('host-launch-game-btn');
 
         if (folderBtn) folderBtn.onclick = handleFolderSelection;
+        if (folderInput) folderInput.onchange = handleFallbackFolderSelection;
         if (startBtn) startBtn.onclick = startHostingSession;
         if (stopBtn) stopBtn.onclick = stopHostingSession;
         if (launchBtn) launchBtn.onclick = startGame;
@@ -39,7 +41,7 @@ window.HostModule = (function() {
 
     async function handleFolderSelection() {
         if (!window.showDirectoryPicker) {
-            alert("Directory Picker API is not supported in this browser. Please use Google Chrome or a Chromium-based browser on macOS.");
+            openFallbackFolderPicker();
             return;
         }
 
@@ -48,47 +50,78 @@ window.HostModule = (function() {
             selectedFilesMap.clear();
             selectedSwfFiles = [];
 
-            const folderDisplay = document.getElementById('selected-folder-name');
-            if (folderDisplay) folderDisplay.innerText = `Folder: ${dirHandle.name}`;
-
             // Recursively read directory contents (handles assets folder alongside main swf)
             await readDirectoryRecursive(dirHandle, '');
-
-            const swfSelectGroup = document.getElementById('swf-select-group');
-            const swfSelectDropdown = document.getElementById('swf-file-select');
-            const startBtn = document.getElementById('host-start-btn');
-
-            if (selectedSwfFiles.length === 0) {
-                if (window.NovaApp) window.NovaApp.setStatus("Error: No SWF file found in selected folder.");
-                alert("No .swf files found in the selected folder hierarchy. Ensure your main SWF file is present.");
-                if (swfSelectGroup) swfSelectGroup.style.display = 'none';
-                if (startBtn) startBtn.disabled = true;
-                return;
-            }
-
-            // Populate the SWF selector dropdown
-            if (swfSelectDropdown) {
-                swfSelectDropdown.innerHTML = '';
-                selectedSwfFiles.forEach((fileObj, index) => {
-                    const option = document.createElement('option');
-                    option.value = fileObj.relativePath;
-                    option.textContent = fileObj.relativePath;
-                    swfSelectDropdown.appendChild(option);
-                });
-            }
-
-            if (swfSelectGroup) swfSelectGroup.style.display = 'block';
-            if (startBtn) startBtn.disabled = false;
-
-            if (window.NovaApp) {
-                window.NovaApp.setStatus(`Loaded folder successfully. Found ${selectedSwfFiles.length} SWF file(s) and assets.`);
-            }
+            updateSelectedFolder(dirHandle.name);
 
         } catch (err) {
             if (err.name !== 'AbortError') {
                 console.error(err);
-                if (window.NovaApp) window.NovaApp.setStatus(`Error reading folder: ${err.message}`);
+                if (['SecurityError', 'NotAllowedError', 'TypeError'].includes(err.name)) {
+                    openFallbackFolderPicker();
+                } else if (window.NovaApp) {
+                    window.NovaApp.setStatus(`Error reading folder: ${err.message}`);
+                }
             }
+        }
+    }
+
+    function openFallbackFolderPicker() {
+        const folderInput = document.getElementById('host-folder-fallback');
+        if (folderInput) folderInput.click();
+        else if (window.NovaApp) window.NovaApp.setStatus('Folder selection is not available in this browser.');
+    }
+
+    function handleFallbackFolderSelection(event) {
+        const folderInput = event.currentTarget;
+        const files = Array.from(folderInput.files || []);
+        folderInput.value = '';
+        if (!files.length) return;
+
+        selectedFilesMap.clear();
+        selectedSwfFiles = [];
+        let folderName = 'Selected folder';
+        files.forEach((file) => {
+            const path = file.webkitRelativePath || file.name;
+            const segments = path.split('/');
+            if (segments.length > 1) folderName = segments[0];
+            const relativePath = segments.length > 1 ? segments.slice(1).join('/') : file.name;
+            selectedFilesMap.set(relativePath, file);
+            if (file.name.toLowerCase().endsWith('.swf')) {
+                selectedSwfFiles.push({ name: file.name, relativePath, file });
+            }
+        });
+        updateSelectedFolder(folderName);
+    }
+
+    function updateSelectedFolder(folderName) {
+        const folderDisplay = document.getElementById('selected-folder-name');
+        const swfSelectGroup = document.getElementById('swf-select-group');
+        const swfSelectDropdown = document.getElementById('swf-file-select');
+        const startBtn = document.getElementById('host-start-btn');
+        if (folderDisplay) folderDisplay.innerText = `Folder: ${folderName}`;
+
+        if (selectedSwfFiles.length === 0) {
+            if (window.NovaApp) window.NovaApp.setStatus('No SWF file found in the selected folder.');
+            alert('No .swf files found in the selected folder hierarchy. Ensure your main SWF file is present.');
+            if (swfSelectGroup) swfSelectGroup.style.display = 'none';
+            if (startBtn) startBtn.disabled = true;
+            return;
+        }
+
+        if (swfSelectDropdown) {
+            swfSelectDropdown.innerHTML = '';
+            selectedSwfFiles.forEach((fileObj) => {
+                const option = document.createElement('option');
+                option.value = fileObj.relativePath;
+                option.textContent = fileObj.relativePath;
+                swfSelectDropdown.appendChild(option);
+            });
+        }
+        if (swfSelectGroup) swfSelectGroup.style.display = 'block';
+        if (startBtn) startBtn.disabled = false;
+        if (window.NovaApp) {
+            window.NovaApp.setStatus(`Loaded folder successfully. Found ${selectedSwfFiles.length} SWF file(s) and assets.`);
         }
     }
 
