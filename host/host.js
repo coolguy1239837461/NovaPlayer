@@ -7,9 +7,6 @@ window.HostModule = (function() {
     let selectedSwf = null;
     let gameStarted = false;
     let players = new Map();
-    let hostMapping = createDefaultMapping(1);
-    let hostMappingDraft = null;
-    const controlDrafts = new Map();
     const controlActions = [
         ['up', 'Up'],
         ['down', 'Down'],
@@ -18,8 +15,12 @@ window.HostModule = (function() {
         ['jump', 'Jump'],
         ['action', 'Action']
     ];
+    let hostMapping = createDefaultMapping(1);
+    let hostMappingDraft = null;
+    const controlDrafts = new Map();
 
     function init() {
+        const folderInput = document.getElementById('host-folder-fallback');
         const swfInput = document.getElementById('host-swf-file-fallback');
         const folderDropzone = document.getElementById('host-folder-dropzone');
         const startBtn = document.getElementById('host-start-btn');

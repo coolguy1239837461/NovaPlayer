@@ -281,6 +281,7 @@
             const RAW_BASE_URL = `https://raw.githubusercontent.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/${GITHUB_BRANCH}`;
 
             let currentRole = 'host';
+            const assetSources = new Map();
             const diagnosticsLog = document.getElementById('diagnostics-log');
             const diagnosticEntries = [];
             const diagnosticMethods = ['log', 'info', 'warn', 'error', 'debug', 'trace', 'table', 'assert', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'count', 'countReset', 'time', 'timeEnd'];
@@ -467,15 +468,20 @@
                 if (!preferGitHub) {
                     try {
                         const localResponse = await fetch(`./${path}${cacheBuster}`);
-                        if (localResponse.ok) return await localResponse.text();
+                        if (localResponse.ok) {
+                            assetSources.set(path, 'workspace');
+                            return await localResponse.text();
+                        }
+                        logDiagnostic('loader', 'warn', 'Workspace asset unavailable', path, localResponse.status);
                     } catch (err) {
-                        console.warn(`[NovaPlayer] Could not load local ${path} (${err.message}). Trying GitHub...`);
+                        logDiagnostic('loader', 'warn', 'Workspace asset request failed; trying GitHub', path, err);
                     }
                 }
 
                 try {
                     const response = await fetch(githubUrl);
                     if (response.ok) {
+                        assetSources.set(path, preferGitHub ? 'GitHub' : 'GitHub fallback');
                         return await response.text();
                     }
                     throw new Error(`GitHub fetch status ${response.status}`);
@@ -485,6 +491,7 @@
                     if (!localResponse.ok) {
                         throw new Error(`Failed to load ${path} locally or from GitHub.`);
                     }
+                    assetSources.set(path, 'workspace fallback');
                     return await localResponse.text();
                 }
             }
@@ -524,7 +531,12 @@
                         window.ClientModule.init();
                     }
 
-                    setStatus(`'${roleName.toUpperCase()}' assets loaded${preferGitHub ? ' from GitHub' : ' from this workspace'}.`);
+                    const sources = Array.from(new Set([
+                        assetSources.get(`${roleName}/${roleName}.html`),
+                        assetSources.get(`${roleName}/${roleName}.css`),
+                        assetSources.get(`${roleName}/${roleName}.js`)
+                    ].filter(Boolean)));
+                    setStatus(`'${roleName.toUpperCase()}' assets loaded from ${sources.join(', ') || 'unknown source'}.`);
                 } catch (err) {
                     console.error(err);
                     setStatus(`Error loading module '${roleName}': ${err.message}`);
