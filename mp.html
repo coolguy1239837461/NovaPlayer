@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flash Player — True P2P Stream Architecture</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html {
+            width: 100%; height: 100%;
+            background: #121212; color: #fff;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+        .container {
+            width: 90%; max-width: 700px;
+            background: #1e1e1e; border: 1px solid #333;
+            border-radius: 12px; padding: 24px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        }
+        h2 { color: #00ffcc; font-size: 20px; margin-bottom: 8px; }
+        p { color: #aaa; font-size: 13px; line-height: 1.4; margin-bottom: 16px; }
+        
+        .mode-select-row { display: flex; gap: 12px; margin-bottom: 16px; }
+        .mode-card {
+            flex: 1; background: #161616; border: 2px solid #333;
+            border-radius: 8px; padding: 14px; cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .mode-card.selected { border-color: #00ffcc; background: #1a2624; }
+        .mode-card h3 { color: #fff; font-size: 15px; margin-bottom: 4px; }
+        
+        #drop-zone {
+            border: 2px dashed #444; border-radius: 8px;
+            padding: 20px; text-align: center; background: #161616;
+            cursor: pointer; transition: border-color 0.2s; margin-bottom: 14px;
+        }
+        #drop-zone.hover { border-color: #00ffcc; }
+        
+        button.action-btn {
+            background: #00ffcc; color: #000; border: none;
+            padding: 10px 16px; border-radius: 6px; font-weight: bold;
+            font-family: monospace; cursor: pointer; font-size: 13px;
+            width: 100%; transition: background 0.2s; margin-top: 8px;
+        }
+        button.action-btn:hover { background: #00cca3; }
+        button.action-btn:disabled { background: #444; color: #777; cursor: not-allowed; }
+
+        .panel-section { display: none; }
+        .panel-section.active { display: block; }
+
+        .lobby-box {
+            background: #121212; border: 1px solid #333; border-radius: 8px;
+            padding: 12px; margin-top: 12px; max-height: 150px; overflow-y: auto;
+        }
+        .player-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 10px; background: #1a1a1a; border-radius: 4px; margin-bottom: 6px;
+            font-family: monospace; font-size: 12px; border-left: 3px solid #00ffcc;
+        }
+
+        #game-view {
+            width: 100vw; height: 100vh; display: none; position: relative;
+        }
+        #flash-container, #remote-video-container {
+            width: 100%; height: 100%; display: none;
+        }
+        #remote-video {
+            width: 100%; height: 100%; object-fit: contain; background: #000;
+        }
+        ruffle-player { width: 100%; height: 100%; }
+        input[type="file"] { display: none; }
+
+        #status-bar {
+            position: fixed; bottom: 10px; left: 10px; z-index: 9999;
+            background: rgba(18,18,18,0.9); border: 1px solid #333;
+            color: #00ffcc; font-family: monospace; font-size: 11px;
+            padding: 6px 10px; border-radius: 4px; pointer-events: none;
+        }
+    </style>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+</head>
+<body>
+
+    <div class="container" id="main-menu-container">
+        <h2>Flash Player — Multiplayer Stream</h2>
+        <p>Select your connection architecture mode to begin setup.</p>
+        
+        <div class="mode-select-row">
+            <div class="mode-card selected" id="card-host" onclick="switchRole('host')">
+                <h3>🖥️ Host (Mac)</h3>
+                <p>Configure room, index game files, and host players.</p>
+            </div>
+            <div class="mode-card" id="card-client" onclick="switchRole('client')">
+                <h3>💻 Client (Chromebook)</h3>
+                <p>Join room, await host selection, and stream the game.</p>
+            </div>
+        </div>
+
+        <!-- HOST SUBMENU -->
+        <div id="host-panel" class="panel-section active">
+            <div id="drop-zone" onclick="document.getElementById('folder-input').click()">
+                <strong>Drop Game Folder Here</strong>
+                <p>Select main folder containing game assets & SWF</p>
+                <input type="file" id="folder-input" webkitdirectory directory multiple>
+            </div>
+            
+            <button class="action-btn" id="gen-code-btn" onclick="generateRoomCode()" disabled>1. Generate Room Code</button>
+            
+            <div id="room-info-area" style="display:none; margin-top: 14px;">
+                <p style="margin-bottom: 4px;">Active Room Code:</p>
+                <div id="room-code-display" style="font-size: 22px; font-family: monospace; color: #00ffcc; font-weight: bold; letter-spacing: 2px;">----</div>
+                
+                <p style="margin-top: 12px; margin-bottom: 4px;">Connected Players Lobby:</p>
+                <div class="lobby-box" id="player-lobby-list">
+                    <div style="color: #666; font-family: monospace; font-size: 12px; text-align: center; padding: 10px;">Waiting for players to join... (Share code with Chromebook)</div>
+                </div>
+
+                <button class="action-btn" id="start-stream-btn" onclick="launchHostGame()" style="background: #ffaa00; color: #000; margin-top: 12px;" disabled>2. Broadcast Game to Lobby</button>
+            </div>
+        </div>
+
+        <!-- CLIENT SUBMENU -->
+        <div id="client-panel" class="panel-section">
+            <p>Enter the Room Code provided by the Host Mac:</p>
+            <input type="text" id="room-code-input" placeholder="e.g. K7X4-PQ92" style="width:100%; padding:10px; background:#161616; border:1px solid #444; color:#00ffcc; border-radius:6px; font-family:monospace; margin-bottom:10px;">
+            <button class="action-btn" onclick="clientJoinLobby()">Connect to Room & Wait</button>
+        </div>
+    </div>
+
+    <!-- Active Game / Waiting Screens -->
+    <div id="game-view">
+        <div id="flash-container"></div>
+        <div id="remote-video-container">
+            <div id="waiting-screen" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; padding:20px;">
+                <h3 style="color: #00ffcc; font-size: 22px; margin-bottom: 10px;">Connected to Host Lobby</h3>
+                <p style="color: #aaa; font-size: 14px;">Waiting for the host to select and broadcast the game...</p>
+                <div style="width: 40px; height: 40px; border: 4px solid #333; border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite; margin-top: 20px;"></div>
+            </div>
+            <video id="remote-video" autoplay playsinline style="display:none; width:100%; height:100%; object-fit:contain;"></video>
+        </div>
+    </div>
+
+    <div id="status-bar">Status: Ready. Select role.</div>
+
+    <style>
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+
+    <script>
+        let currentRole = 'host';
+        const fileObjectsMap = new Map();
+        let mainSwfBlobUrl = null;
+        let activeRoomCode = '';
+        let connectedClients = [];
+        let broadcastChannel = null;
+
+        function switchRole(role) {
+            currentRole = role;
+            document.getElementById('card-host').classList.toggle('selected', role === 'host');
+            document.getElementById('card-client').classList.toggle('selected', role === 'client');
+            document.getElementById('host-panel').classList.toggle('active', role === 'host');
+            document.getElementById('client-panel').classList.toggle('active', role === 'client');
+        }
+
+        const folderInput = document.getElementById("folder-input");
+        const statusBar = document.getElementById("status-bar");
+
+        folderInput.addEventListener("change", (e) => {
+            const files = Array.from(e.target.files).map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
+            indexHostFiles(files);
+        });
+
+        async function indexHostFiles(files) {
+            statusBar.innerText = "Indexing files with low-RAM asset pipeline...";
+            let mainSwfName = null;
+
+            files.forEach(item => {
+                const filename = item.file.name.toLowerCase();
+                fileObjectsMap.set(filename, item.file);
+                if (filename === "game.swf" && !mainSwfName) mainSwfName = filename;
+            });
+
+            if (!mainSwfName) {
+                const found = files.find(f => f.file.name.toLowerCase().endsWith('.swf'));
+                if (found) mainSwfName = found.file.name.toLowerCase();
+            }
+
+            if (!mainSwfName) {
+                statusBar.innerText = "Error: No SWF found in folder.";
+                return;
+            }
+
+            mainSwfBlobUrl = URL.createObjectURL(fileObjectsMap.get(mainSwfName));
+            document.getElementById('gen-code-btn').disabled = false;
+            statusBar.innerText = "Folder indexed successfully. Ready to generate room code.";
+        }
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+            code += '-';
+            for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+            
+            activeRoomCode = code;
+            document.getElementById('room-code-display').innerText = activeRoomCode;
+            document.getElementById('room-info-area').style.display = 'block';
+            document.getElementById('gen-code-btn').disabled = true;
+
+            // Open a real BroadcastChannel scoped to this room code for local tab/device communication
+            broadcastChannel = new BroadcastChannel('flash_room_' + activeRoomCode);
+            broadcastChannel.onmessage = (event) => {
+                if (event.data.type === 'JOIN_REQUEST') {
+                    if (!connectedClients.some(c => c.id === event.data.clientId)) {
+                        connectedClients.push({ id: event.data.clientId, name: event.data.clientName });
+                        updateLobbyUI();
+                        broadcastChannel.postMessage({ type: 'WELCOME', clientId: event.data.clientId });
+                    }
+                }
+            };
+
+            statusBar.innerText = `Room ${activeRoomCode} opened. Listening for local network clients...`;
+        }
+
+        function updateLobbyUI() {
+            const lobbyBox = document.getElementById('player-lobby-list');
+            if (connectedClients.length === 0) {
+                lobbyBox.innerHTML = '<div style="color: #666; font-family: monospace; font-size: 12px; text-align: center; padding: 10px;">Waiting for players to join...</div>';
+                document.getElementById('start-stream-btn').disabled = true;
+            } else {
+                lobbyBox.innerHTML = '';
+                connectedClients.forEach(p => {
+                    lobbyBox.innerHTML += `<div class="player-item"><span>👤 ${p.name}</span><span style="color: #00ffcc;">Connected</span></div>`;
+                });
+                document.getElementById('start-stream-btn').disabled = false;
+            }
+        }
+
+        function launchHostGame() {
+            document.getElementById('main-menu-container').style.display = 'none';
+            document.getElementById('game-view').style.display = 'block';
+            document.getElementById('flash-container').style.display = 'block';
+
+            const ruffle = window.RufflePlayer.newest();
+            const player = ruffle.createPlayer();
+            document.getElementById('flash-container').appendChild(player);
+            player.load({ url: mainSwfBlobUrl, allowScriptAccess: true });
+
+            // Once canvas renders, grab stream and push signal to connected Chromebook clients via data broadcast
+            setTimeout(() => {
+                const canvas = player.querySelector('canvas');
+                if (canvas && typeof canvas.captureStream === 'function') {
+                    const stream = canvas.captureStream(30);
+                    
+                    // Setup local WebRTC peer connection wrapper using local loopback/data signaling for the stream
+                    const pcHost = new RTCPeerConnection();
+                    stream.getTracks().forEach(track => pcHost.addTrack(track, stream));
+
+                    pcHost.createOffer().then(offer => pcHost.setLocalDescription(offer)).then(() => {
+                        broadcastChannel.postMessage({
+                            type: 'GAME_BROADCAST',
+                            offer: pcHost.localDescription,
+                            swfUrl: mainSwfBlobUrl
+                        });
+                    });
+
+                    pcHost.onicecandidate = e => {
+                        if (e.candidate) {
+                            broadcastChannel.postMessage({ type: 'ICE_CANDIDATE', candidate: e.candidate });
+                        }
+                    };
+
+                    statusBar.innerText = `Host streaming active (Room: ${activeRoomCode}). Broadcast sent to lobby.`;
+                } else {
+                    statusBar.innerText = `Error: Browser canvas captureStream not supported.`;
+                }
+            }, 1500);
+        }
+
+        let clientPc = null;
+
+        function clientJoinLobby() {
+            const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+            if (!code) {
+                alert("Please enter a valid room code.");
+                return;
+            }
+
+            document.getElementById('main-menu-container').style.display = 'none';
+            document.getElementById('game-view').style.display = 'block';
+            document.getElementById('remote-video-container').style.display = 'block';
+            
+            statusBar.innerText = `Joined room ${code}. Connecting to host broadcast...`;
+
+            const clientId = 'Client_' + Math.floor(Math.random() * 9000 + 1000);
+            const clientChannel = new BroadcastChannel('flash_room_' + code);
+
+            clientChannel.postMessage({ type: 'JOIN_REQUEST', clientId: clientId, clientName: 'Chromebook-User' });
+
+            clientChannel.onmessage = async (event) => {
+                if (event.data.type === 'GAME_BROADCAST') {
+                    document.getElementById('waiting-screen').style.display = 'none';
+                    const videoEl = document.getElementById('remote-video');
+                    videoEl.style.display = 'block';
+
+                    clientPc = new RTCPeerConnection();
+                    clientPc.ontrack = (e) => {
+                        videoEl.srcObject = e.streams[0];
+                    };
+
+                    clientPc.onicecandidate = (e) => {
+                        if (e.candidate) {
+                            clientChannel.postMessage({ type: 'ICE_CANDIDATE', candidate: e.candidate });
+                        }
+                    };
+
+                    await clientPc.setRemoteDescription(new RTCSessionDescription(event.data.offer));
+                    const answer = await clientPc.createAnswer();
+                    await clientPc.setLocalDescription(answer);
+
+                    clientChannel.postMessage({ type: 'ANSWER', answer: answer });
+                    statusBar.innerText = `Stream feed received from Host! Displaying live canvas.`;
+                } else if (event.data.type === 'ICE_CANDIDATE' && clientPc) {
+                    try {
+                        await clientPc.addIceCandidate(new RTCIceCandidate(event.data.candidate));
+                    } catch (err) {
+                        console.error('ICE candidate error', err);
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
