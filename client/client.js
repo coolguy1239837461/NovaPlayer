@@ -141,6 +141,10 @@ window.ClientModule = (function() {
         if (!hostAllowsCursor || !clientConnection || !clientConnection.open || !flashReady) return;
         const video = document.getElementById('remote-video');
         if (!video || !video.videoWidth || !video.videoHeight) return;
+        if (event.type === 'pointerdown' && event.target === video && video.setPointerCapture) {
+            video.setPointerCapture(event.pointerId);
+        }
+        if (event.target !== video) return;
         const bounds = video.getBoundingClientRect();
         const scale = Math.min(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
         const contentWidth = video.videoWidth * scale;
