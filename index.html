@@ -287,7 +287,7 @@
             <span id="diagnostics-count">0 events</span>
             <span id="diagnostics-error-count">0 errors</span>
             <div class="diagnostics-actions">
-                <button id="diagnostics-export" type="button">Export</button>
+                <button id="diagnostics-copy" type="button">Copy Log</button>
                 <button id="diagnostics-clear" type="button">Clear</button>
                 <button id="diagnostics-minimize" type="button" aria-expanded="true">Minimize</button>
             </div>
@@ -502,15 +502,24 @@
                     }
                 }
 
-                document.getElementById('diagnostics-export').addEventListener('click', () => {
-                    const blob = new Blob([JSON.stringify(diagnosticEntries, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const anchor = document.createElement('a');
-                    anchor.href = url;
-                    anchor.download = `novaplayer-diagnostics-${Date.now()}.json`;
-                    anchor.click();
-                    URL.revokeObjectURL(url);
-                    logDiagnostic('diagnostics', 'info', 'Full session log exported');
+                document.getElementById('diagnostics-copy').addEventListener('click', async () => {
+                    const contents = JSON.stringify(diagnosticEntries, null, 2);
+                    try {
+                        await navigator.clipboard.writeText(contents);
+                        logDiagnostic('diagnostics', 'info', 'Session log copied to clipboard');
+                    } catch (error) {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = contents;
+                        textarea.setAttribute('readonly', '');
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        const copied = document.execCommand('copy');
+                        textarea.remove();
+                        if (copied) logDiagnostic('diagnostics', 'info', 'Session log copied to clipboard');
+                        else logDiagnostic('diagnostics', 'error', 'Could not copy session log', error);
+                    }
                 });
                 document.getElementById('diagnostics-clear').addEventListener('click', () => {
                     diagnosticsLog.replaceChildren();

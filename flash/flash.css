@@ -68,6 +68,17 @@
     cursor: pointer;
 }
 
+.host-cursor-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0;
+    color: #ccc;
+    font: 12px monospace;
+}
+
+.host-cursor-control input { accent-color: #00ffcc; }
+
 .client-game-control-lock {
     display: none;
     position: absolute;

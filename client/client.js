@@ -6,6 +6,8 @@ window.ClientModule = (function() {
     let pendingCall = null;
     let controlsLocked = false;
     let pendingControlChange = null;
+    let hostAllowsCursor = false;
+    let lastPointerSentAt = 0;
     let playerMapping = createDefaultMapping();
 
     function init() {
@@ -15,6 +17,9 @@ window.ClientModule = (function() {
         }
         window.addEventListener('keydown', sendControlInput);
         window.addEventListener('keyup', sendControlInput);
+        window.addEventListener('pointermove', sendPointerInput);
+        window.addEventListener('pointerdown', sendPointerInput);
+        window.addEventListener('pointerup', sendPointerInput);
         bindControlUI();
 
         if (window.NovaApp && window.NovaApp.setStatus) {
@@ -42,6 +47,7 @@ window.ClientModule = (function() {
         flashReady = false;
         pendingCall = null;
         pendingControlChange = null;
+        hostAllowsCursor = false;
         if (window.NovaApp && window.NovaApp.setStatus) {
             window.NovaApp.setStatus(`Connecting to room ${code}...`);
         }
@@ -91,6 +97,14 @@ window.ClientModule = (function() {
                     window.NovaApp.setStatus(`Connected as ${ownPlayer.name} · Player ${ownPlayer.slot}. Waiting for the host to start.`);
                 }
             }
+        } else if (message.type === 'CONTROL_SETTINGS') {
+            hostAllowsCursor = Boolean(message.cursorEnabled);
+            if (window.NovaApp) {
+                window.NovaApp.setStatus(`Client mouse controls ${hostAllowsCursor ? 'enabled by host.' : 'disabled by host.'}`);
+            }
+        } else if (message.type === 'ROOM_FULL') {
+            if (window.NovaApp) window.NovaApp.setStatus('This room already has the maximum number of players.');
+            if (clientConnection) clientConnection.close();
         } else if (message.type === 'CONTROL_CHANGE_REQUEST') {
             showControlChangeRequest(message);
         }
@@ -121,6 +135,34 @@ window.ClientModule = (function() {
         if (!binding) return;
         event.preventDefault();
         clientConnection.send({ type: 'CONTROL_INPUT', key: binding.output, pressed: event.type === 'keydown' });
+    }
+
+    function sendPointerInput(event) {
+        if (!hostAllowsCursor || !clientConnection || !clientConnection.open || !flashReady) return;
+        const video = document.getElementById('remote-video');
+        if (!video || !video.videoWidth || !video.videoHeight) return;
+        const bounds = video.getBoundingClientRect();
+        const scale = Math.min(bounds.width / video.videoWidth, bounds.height / video.videoHeight);
+        const contentWidth = video.videoWidth * scale;
+        const contentHeight = video.videoHeight * scale;
+        const contentLeft = bounds.left + (bounds.width - contentWidth) / 2;
+        const contentTop = bounds.top + (bounds.height - contentHeight) / 2;
+        const x = (event.clientX - contentLeft) / contentWidth;
+        const y = (event.clientY - contentTop) / contentHeight;
+        if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+        const now = performance.now();
+        if (event.type === 'pointermove' && now - lastPointerSentAt < 33) return;
+        lastPointerSentAt = now;
+        clientConnection.send({
+            type: 'CONTROL_POINTER',
+            eventType: event.type,
+            x,
+            y,
+            button: event.button,
+            buttons: event.buttons,
+            pointerType: event.pointerType
+        });
     }
 
     function createDefaultMapping() {
@@ -242,10 +284,14 @@ window.ClientModule = (function() {
         clientConnection = null;
         window.removeEventListener('keydown', sendControlInput);
         window.removeEventListener('keyup', sendControlInput);
+        window.removeEventListener('pointermove', sendPointerInput);
+        window.removeEventListener('pointerdown', sendPointerInput);
+        window.removeEventListener('pointerup', sendPointerInput);
         clientId = null;
         flashReady = false;
         pendingCall = null;
         pendingControlChange = null;
+        hostAllowsCursor = false;
     }
 
     return {

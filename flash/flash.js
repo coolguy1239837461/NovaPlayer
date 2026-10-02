@@ -198,12 +198,37 @@ window.FlashModule = (function() {
             : /^[a-z]$/.test(normalizedKey) ? `Key${normalizedKey.toUpperCase()}`
                 : /^[0-9]$/.test(normalizedKey) ? `Digit${normalizedKey}`
                     : normalizedKey === ' ' ? 'Space' : normalizedKey;
-        activePlayer.dispatchEvent(new KeyboardEvent(pressed ? 'keydown' : 'keyup', {
+        const canvas = activePlayer.shadowRoot?.querySelector('canvas') || activePlayer;
+        if (canvas.focus) canvas.focus({ preventScroll: true });
+        canvas.dispatchEvent(new KeyboardEvent(pressed ? 'keydown' : 'keyup', {
             key: normalizedKey,
             code,
             keyCode: keyCodes[normalizedKey] || (normalizedKey.length === 1 ? normalizedKey.toUpperCase().charCodeAt(0) : 0),
             which: keyCodes[normalizedKey] || (normalizedKey.length === 1 ? normalizedKey.toUpperCase().charCodeAt(0) : 0),
-            bubbles: true
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        }));
+    }
+
+    function sendPointerInput(input) {
+        const canvas = activePlayer?.shadowRoot?.querySelector('canvas') || activePlayer;
+        if (!canvas || !input || !['pointermove', 'pointerdown', 'pointerup'].includes(input.eventType)) return;
+        const bounds = canvas.getBoundingClientRect();
+        const clientX = bounds.left + input.x * bounds.width;
+        const clientY = bounds.top + input.y * bounds.height;
+        if (canvas.focus) canvas.focus({ preventScroll: true });
+        canvas.dispatchEvent(new PointerEvent(input.eventType, {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: input.pointerType || 'mouse',
+            isPrimary: true,
+            clientX,
+            clientY,
+            button: input.button ?? 0,
+            buttons: input.buttons ?? 0
         }));
     }
 
@@ -243,6 +268,7 @@ window.FlashModule = (function() {
         setupHostStream: setupHostStream,
         addViewer: addViewer,
         sendGameKey: sendGameKey,
+        sendPointerInput: sendPointerInput,
         showRemoteVideo: showRemoteVideo,
         cleanup: cleanup
     };

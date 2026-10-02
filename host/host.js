@@ -6,6 +6,7 @@ window.HostModule = (function() {
     let hostPeer = null;
     let selectedSwf = null;
     let gameStarted = false;
+    let clientCursorEnabled = false;
     let players = new Map();
     const controlActions = [
         ['up', 'Up'],
@@ -39,6 +40,7 @@ window.HostModule = (function() {
         if (startBtn) startBtn.onclick = startHostingSession;
         if (stopBtn) stopBtn.onclick = stopHostingSession;
         if (launchBtn) launchBtn.onclick = startGame;
+        document.addEventListener('change', handleCursorInputToggle);
         window.addEventListener('keydown', handleHostKey);
         window.addEventListener('keyup', handleHostKey);
 
@@ -218,6 +220,8 @@ window.HostModule = (function() {
             window.NovaApp.logDiagnostic('host', 'info', 'Starting session with', chosenSwfPath, 'folder files:', selectedFilesMap.size);
         }
         gameStarted = false;
+        clientCursorEnabled = false;
+        syncCursorInputToggles();
         players.clear();
         controlDrafts.clear();
         activeRoomCode = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -266,6 +270,11 @@ window.HostModule = (function() {
         if (message.type === 'JOIN_REQUEST') {
             if (!players.has(connection.peer)) {
                 const slot = nextAvailableSlot();
+                if (slot === null) {
+                    connection.send({ type: 'ROOM_FULL' });
+                    connection.close();
+                    return;
+                }
                 players.set(connection.peer, {
                     name: message.clientName || 'Player',
                     slot,
@@ -277,10 +286,18 @@ window.HostModule = (function() {
             }
             renderPlayers();
             publishPlayers();
+            connection.send({ type: 'CONTROL_SETTINGS', cursorEnabled: clientCursorEnabled });
             if (gameStarted) startGameForClient(connection.peer);
         } else if (message.type === 'CONTROL_INPUT' && players.has(connection.peer)) {
+            if (window.NovaApp && window.NovaApp.logDiagnostic) {
+                window.NovaApp.logDiagnostic('input', 'debug', 'Client key received', players.get(connection.peer).name, message.key, message.pressed ? 'down' : 'up');
+            }
             if (window.FlashModule && window.FlashModule.sendGameKey) {
                 window.FlashModule.sendGameKey(message.key, message.pressed);
+            }
+        } else if (message.type === 'CONTROL_POINTER' && clientCursorEnabled && players.has(connection.peer)) {
+            if (window.FlashModule && window.FlashModule.sendPointerInput) {
+                window.FlashModule.sendPointerInput(message);
             }
         } else if (message.type === 'CONTROL_LOCK' && players.has(connection.peer)) {
             players.get(connection.peer).controlsLocked = Boolean(message.locked);
@@ -304,10 +321,27 @@ window.HostModule = (function() {
 
     function nextAvailableSlot() {
         const usedSlots = new Set(Array.from(players.values(), (player) => player.slot));
-        for (let slot = 1; slot <= 4; slot++) {
+        for (let slot = 2; slot <= 4; slot++) {
             if (!usedSlots.has(slot)) return slot;
         }
-        return 1;
+        return null;
+    }
+
+    function handleCursorInputToggle(event) {
+        if (!event.target.matches('#host-client-cursor-toggle, #host-game-client-cursor-toggle')) return;
+        clientCursorEnabled = event.target.checked;
+        syncCursorInputToggles();
+        sendToClients({ type: 'CONTROL_SETTINGS', cursorEnabled: clientCursorEnabled });
+        if (window.NovaApp) {
+            window.NovaApp.setStatus(`Client mouse controls ${clientCursorEnabled ? 'enabled' : 'disabled'}.`);
+        }
+    }
+
+    function syncCursorInputToggles() {
+        ['host-client-cursor-toggle', 'host-game-client-cursor-toggle'].forEach((id) => {
+            const toggle = document.getElementById(id);
+            if (toggle) toggle.checked = clientCursorEnabled;
+        });
     }
 
     function renderPlayers() {
@@ -422,6 +456,8 @@ window.HostModule = (function() {
         gameStarted = false;
         players.clear();
         controlDrafts.clear();
+        clientCursorEnabled = false;
+        document.removeEventListener('change', handleCursorInputToggle);
         window.removeEventListener('keydown', handleHostKey);
         window.removeEventListener('keyup', handleHostKey);
     }
