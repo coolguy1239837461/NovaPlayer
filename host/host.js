@@ -1,6 +1,7 @@
 window.HostModule = (function() {
     let selectedFilesMap = new Map(); // Stores name -> File object for everything in the directory
     let selectedSwfFiles = [];        // List of SWF file objects found
+    let selectedFolderName = null;
     let activeRoomCode = null;
     let hostPeer = null;
     let selectedSwf = null;
@@ -19,7 +20,7 @@ window.HostModule = (function() {
     ];
 
     function init() {
-        const folderInput = document.getElementById('host-folder-fallback');
+        const swfInput = document.getElementById('host-swf-file-fallback');
         const folderDropzone = document.getElementById('host-folder-dropzone');
         const startBtn = document.getElementById('host-start-btn');
         const stopBtn = document.getElementById('host-stop-btn');
@@ -50,7 +51,10 @@ window.HostModule = (function() {
         const folderInput = event.currentTarget;
         const files = Array.from(folderInput.files || []);
         folderInput.value = '';
-        if (!files.length) return;
+        if (!files.length) {
+            showFolderSummary('No files were returned by the folder picker. Try dropping the folder here.');
+            return;
+        }
 
         selectedFilesMap.clear();
         selectedSwfFiles = [];
@@ -65,6 +69,18 @@ window.HostModule = (function() {
         updateSelectedFolder(folderName);
     }
 
+    function handleManualSwfSelection(event) {
+        const input = event.currentTarget;
+        const file = input.files && input.files[0];
+        input.value = '';
+        if (!file) return;
+        storeSelectedFile(file, file.name);
+        if (!selectedSwfFiles.some((entry) => entry.relativePath === file.name)) {
+            selectedSwfFiles.push({ name: file.name, relativePath: file.name, file });
+        }
+        updateSelectedFolder(selectedFolderName || 'Selected SWF file');
+    }
+
     async function handleFolderDrop(event) {
         event.preventDefault();
         event.currentTarget.classList.remove('drag-active');
@@ -73,6 +89,22 @@ window.HostModule = (function() {
         const items = Array.from(event.dataTransfer.items || []);
         const entries = items.map((item) => item.webkitGetAsEntry && item.webkitGetAsEntry()).filter(Boolean);
         try {
+            if (!entries.length) {
+                const files = Array.from(event.dataTransfer.files || []);
+                if (!files.length) {
+                    showFolderSummary('The dropped item did not contain readable files.');
+                    return;
+                }
+                let folderName = 'Dropped files';
+                files.forEach((file) => {
+                    const path = file.webkitRelativePath || file.name;
+                    const segments = path.split('/');
+                    if (segments.length > 1) folderName = segments[0];
+                    storeSelectedFile(file, segments.length > 1 ? segments.slice(1).join('/') : file.name);
+                });
+                updateSelectedFolder(folderName);
+                return;
+            }
             for (const entry of entries) {
                 if (entry.isDirectory) {
                     await readDroppedDirectory(entry, '');
@@ -111,23 +143,31 @@ window.HostModule = (function() {
 
     function storeSelectedFile(file, relativePath) {
         selectedFilesMap.set(relativePath, file);
+        const existingIndex = selectedSwfFiles.findIndex((entry) => entry.relativePath === relativePath);
         if (file.name.toLowerCase().endsWith('.swf')) {
-            selectedSwfFiles.push({ name: file.name, relativePath, file });
+            const entry = { name: file.name, relativePath, file };
+            if (existingIndex >= 0) selectedSwfFiles[existingIndex] = entry;
+            else selectedSwfFiles.push(entry);
+        } else if (existingIndex >= 0) {
+            selectedSwfFiles.splice(existingIndex, 1);
         }
     }
 
     function updateSelectedFolder(folderName) {
+        selectedFolderName = folderName;
         const folderDisplay = document.getElementById('selected-folder-name');
+        const manualPickGroup = document.getElementById('swf-manual-pick-group');
         const swfSelectGroup = document.getElementById('swf-select-group');
         const swfSelectDropdown = document.getElementById('swf-file-select');
         const startBtn = document.getElementById('host-start-btn');
         if (folderDisplay) folderDisplay.innerText = `Folder: ${folderName}`;
+        showFolderSummary(`${selectedFilesMap.size} file(s) found; ${selectedSwfFiles.length} SWF file(s) found.`);
 
         if (selectedSwfFiles.length === 0) {
-            if (window.NovaApp) window.NovaApp.setStatus('No SWF file found in the selected folder.');
-            alert('No .swf files found in the selected folder hierarchy. Ensure your main SWF file is present.');
             if (swfSelectGroup) swfSelectGroup.style.display = 'none';
+            if (manualPickGroup) manualPickGroup.style.display = 'block';
             if (startBtn) startBtn.disabled = true;
+            if (window.NovaApp) window.NovaApp.setStatus('No SWF found in that folder. Choose the main SWF file separately.');
             return;
         }
 
@@ -140,11 +180,18 @@ window.HostModule = (function() {
                 swfSelectDropdown.appendChild(option);
             });
         }
+        if (manualPickGroup) manualPickGroup.style.display = 'none';
         if (swfSelectGroup) swfSelectGroup.style.display = 'block';
         if (startBtn) startBtn.disabled = false;
         if (window.NovaApp) {
             window.NovaApp.setStatus(`Loaded folder successfully. Found ${selectedSwfFiles.length} SWF file(s) and assets.`);
         }
+    }
+
+    function showFolderSummary(message) {
+        const summary = document.getElementById('folder-selection-summary');
+        if (summary) summary.textContent = message;
+        if (window.NovaApp) window.NovaApp.setStatus(message);
     }
 
     async function startHostingSession() {
@@ -325,7 +372,7 @@ window.HostModule = (function() {
         }
         renderControlDashboard();
         if (window.FlashModule && window.FlashModule.setupHostStream) {
-            await window.FlashModule.setupHostStream(selectedSwf);
+            await window.FlashModule.setupHostStream(selectedSwf, selectedFilesMap);
             players.forEach((player, clientId) => window.FlashModule.addViewer(clientId, hostPeer));
         } else if (window.NovaApp) {
             window.NovaApp.setStatus('Flash player is unavailable; could not start the game.');

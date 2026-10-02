@@ -9,7 +9,13 @@
                 <span class="folder-drop-hint">or drop the game folder here</span>
             </div>
             <span id="selected-folder-name" class="folder-display">No folder selected</span>
+            <span id="folder-selection-summary" class="folder-selection-summary" aria-live="polite"></span>
             <input id="host-folder-fallback" class="folder-picker-input" type="file" webkitdirectory directory multiple>
+        </div>
+
+        <div class="form-group" id="swf-manual-pick-group" style="display:none;">
+            <label class="action-btn secondary-btn folder-picker-label" for="host-swf-file-fallback">Choose SWF File</label>
+            <input id="host-swf-file-fallback" class="folder-picker-input" type="file" accept=".swf,application/x-shockwave-flash">
         </div>
 
         <div class="form-group" id="swf-select-group" style="display:none;">

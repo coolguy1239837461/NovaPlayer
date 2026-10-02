@@ -1,6 +1,8 @@
 window.FlashModule = (function() {
     let activePlayer = null;
     let activeSwfUrl = null;
+    let originalFetch = null;
+    let assetBlobUrls = new Map();
     let outboundStream = null;
     const viewerConnections = new Map();
 
@@ -47,7 +49,18 @@ window.FlashModule = (function() {
         const player = activePlayer;
         flashContainer.appendChild(player);
 
-        player.load({ url: swfUrl, allowScriptAccess: true });
+        const loadPromise = player.load({
+            url: swfUrl,
+            allowScriptAccess: true,
+            networkingAccessMode: 'all',
+            sandbox: null
+        });
+        if (loadPromise && typeof loadPromise.catch === 'function') {
+            loadPromise.catch((error) => {
+                console.error('Ruffle failed to load the selected SWF:', error);
+                if (window.NovaApp) window.NovaApp.setStatus(`Game load failed: ${error.message}`);
+            });
+        }
 
         if (onCanvasReady) {
             const startedAt = performance.now();
@@ -63,7 +76,7 @@ window.FlashModule = (function() {
         }
     }
 
-    async function setupHostStream(mainSwfEntry) {
+    async function setupHostStream(mainSwfEntry, selectedFilesMap) {
         const flashContainer = document.getElementById('flash-container');
         if (!flashContainer || !mainSwfEntry) return;
         if (!window.RufflePlayer) {
@@ -71,6 +84,7 @@ window.FlashModule = (function() {
             return;
         }
 
+        installAssetFetch(selectedFilesMap);
         if (activeSwfUrl) URL.revokeObjectURL(activeSwfUrl);
         activeSwfUrl = URL.createObjectURL(mainSwfEntry);
         await new Promise((resolve) => {
@@ -85,6 +99,62 @@ window.FlashModule = (function() {
         } else if (window.NovaApp) {
             window.NovaApp.setStatus(`Running ${mainSwfEntry.name} on the host. This Ruffle player does not expose a capturable canvas, so clients cannot receive video.`);
         }
+    }
+
+    function installAssetFetch(filesMap) {
+        if (originalFetch) window.fetch = originalFetch;
+        originalFetch = window.fetch.bind(window);
+        assetBlobUrls = new Map();
+
+        const indexedFiles = Array.from(filesMap.entries()).map(([path, file]) => ({
+            path: normalizeAssetPath(path),
+            file
+        }));
+
+        window.fetch = async function(resource, options) {
+            const requestedUrl = typeof resource === 'string' || resource instanceof URL
+                ? resource.toString()
+                : resource.url;
+            let requestedPath;
+            try {
+                requestedPath = normalizeAssetPath(new URL(requestedUrl, window.location.href).pathname);
+            } catch (_) {
+                return originalFetch(resource, options);
+            }
+
+            const match = findAsset(requestedPath, indexedFiles);
+            if (!match) return originalFetch(resource, options);
+
+            let blobUrl = assetBlobUrls.get(match.path);
+            if (!blobUrl) {
+                blobUrl = URL.createObjectURL(match.file);
+                assetBlobUrls.set(match.path, blobUrl);
+            }
+            return originalFetch(blobUrl, options);
+        };
+
+        if (window.NovaApp) {
+            window.NovaApp.setStatus(`Indexed ${indexedFiles.length} game files for Ruffle asset loading.`);
+        }
+    }
+
+    function normalizeAssetPath(path) {
+        let normalized = path;
+        try {
+            normalized = decodeURIComponent(path);
+        } catch (_) {}
+        return normalized.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+    }
+
+    function findAsset(requestedPath, indexedFiles) {
+        const exactMatch = indexedFiles.find((entry) => entry.path === requestedPath);
+        if (exactMatch) return exactMatch;
+
+        const suffixMatch = indexedFiles.find((entry) => requestedPath.endsWith(`/${entry.path}`));
+        if (suffixMatch) return suffixMatch;
+
+        const requestedName = requestedPath.split('/').pop();
+        return indexedFiles.find((entry) => entry.path.split('/').pop() === requestedName) || null;
     }
 
     function addViewer(clientId, peer) {
@@ -138,6 +208,12 @@ window.FlashModule = (function() {
         if (activeSwfUrl) {
             URL.revokeObjectURL(activeSwfUrl);
             activeSwfUrl = null;
+        }
+        assetBlobUrls.forEach((url) => URL.revokeObjectURL(url));
+        assetBlobUrls.clear();
+        if (originalFetch) {
+            window.fetch = originalFetch;
+            originalFetch = null;
         }
         activePlayer = null;
     }

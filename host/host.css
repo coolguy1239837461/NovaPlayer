@@ -104,6 +104,14 @@
     word-break: break-all;
 }
 
+.folder-selection-summary {
+    display: block;
+    margin-top: 6px;
+    color: #00ffcc;
+    font: 11px monospace;
+    overflow-wrap: anywhere;
+}
+
 .dropdown-select {
     width: 100%;
     padding: 10px;
