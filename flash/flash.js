@@ -57,7 +57,11 @@ window.FlashModule = (function() {
             sandbox: null
         });
         if (loadPromise && typeof loadPromise.catch === 'function') {
-            loadPromise.catch((error) => {
+            loadPromise.then(() => {
+                if (window.NovaApp && window.NovaApp.logDiagnostic) {
+                    window.NovaApp.logDiagnostic('ruffle', 'info', 'SWF load promise resolved', swfUrl);
+                }
+            }, (error) => {
                 console.error('Ruffle failed to load the selected SWF:', error);
                 if (window.NovaApp) window.NovaApp.setStatus(`Game load failed: ${error.message}`);
             });
@@ -68,6 +72,9 @@ window.FlashModule = (function() {
             const findCanvas = () => {
                 const canvas = player.shadowRoot?.querySelector('canvas') || player.querySelector('canvas');
                 if (canvas || performance.now() - startedAt >= 15000) {
+                    if (window.NovaApp && window.NovaApp.logDiagnostic) {
+                        window.NovaApp.logDiagnostic('ruffle', canvas ? 'info' : 'error', canvas ? 'Player canvas created' : 'Canvas not found after 15 seconds');
+                    }
                     onCanvasReady(canvas);
                 } else {
                     requestAnimationFrame(findCanvas);
@@ -90,6 +97,9 @@ window.FlashModule = (function() {
         if (!activeSwfUrl) {
             if (window.NovaApp) window.NovaApp.setStatus(`Could not index ${mainSwfEntry.name} for Ruffle.`);
             return;
+        }
+        if (window.NovaApp && window.NovaApp.logDiagnostic) {
+            window.NovaApp.logDiagnostic('ruffle', 'info', 'Loading SWF', mainSwfEntry.name, 'with', selectedFilesMap.size, 'indexed files');
         }
         await new Promise((resolve) => {
             loadSwf(activeSwfUrl, (canvas) => {
@@ -136,6 +146,9 @@ window.FlashModule = (function() {
             }
 
             const blobUrl = getOrCreateBlobUrl(matchedKey);
+            if (window.NovaApp && window.NovaApp.logDiagnostic) {
+                window.NovaApp.logDiagnostic('asset', blobUrl ? 'info' : 'warn', blobUrl ? 'served' : 'not indexed', requestedFile, 'matched key:', matchedKey);
+            }
             return blobUrl ? originalFetch(blobUrl, options) : originalFetch(resource, options);
         };
 

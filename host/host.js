@@ -162,6 +162,9 @@ window.HostModule = (function() {
         const startBtn = document.getElementById('host-start-btn');
         if (folderDisplay) folderDisplay.innerText = `Folder: ${folderName}`;
         showFolderSummary(`${selectedFilesMap.size} file(s) found; ${selectedSwfFiles.length} SWF file(s) found.`);
+        if (window.NovaApp && window.NovaApp.logDiagnostic) {
+            window.NovaApp.logDiagnostic('host', 'info', 'Indexed folder', folderName, `${selectedFilesMap.size} file(s)`, selectedSwfFiles.map((entry) => entry.relativePath));
+        }
 
         if (selectedSwfFiles.length === 0) {
             if (swfSelectGroup) swfSelectGroup.style.display = 'none';
@@ -210,6 +213,9 @@ window.HostModule = (function() {
         }
 
         selectedSwf = mainSwfEntry;
+        if (window.NovaApp && window.NovaApp.logDiagnostic) {
+            window.NovaApp.logDiagnostic('host', 'info', 'Starting session with', chosenSwfPath, 'folder files:', selectedFilesMap.size);
+        }
         gameStarted = false;
         players.clear();
         controlDrafts.clear();

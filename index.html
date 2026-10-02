@@ -150,6 +150,90 @@
         }
         .action-btn:hover { background: #00cca3; }
         .action-btn:disabled { background: #444; color: #777; cursor: not-allowed; }
+
+        #diagnostics-toggle {
+            position: fixed;
+            top: 64px;
+            right: 12px;
+            z-index: 10002;
+            padding: 7px 10px;
+            border: 1px solid #687078;
+            border-radius: 4px;
+            background: #181818;
+            color: #e8eef0;
+            font: 11px monospace;
+            cursor: pointer;
+        }
+
+        #diagnostics-panel {
+            position: fixed;
+            top: 100px;
+            right: 12px;
+            z-index: 10001;
+            display: flex;
+            flex-direction: column;
+            width: min(620px, calc(100vw - 24px));
+            max-height: min(65vh, 620px);
+            border: 1px solid #596168;
+            border-radius: 5px;
+            background: rgba(12, 15, 17, 0.97);
+            color: #e3e7e9;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
+            font: 11px/1.4 monospace;
+        }
+
+        #diagnostics-panel[hidden] { display: none; }
+
+        .diagnostics-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 8px 10px;
+            border-bottom: 1px solid #394147;
+        }
+
+        .diagnostics-header strong { color: #00ffcc; }
+
+        .diagnostics-actions { display: flex; gap: 6px; }
+
+        .diagnostics-actions button {
+            padding: 4px 7px;
+            border: 1px solid #596168;
+            border-radius: 3px;
+            background: #202629;
+            color: #e3e7e9;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        #diagnostics-log {
+            min-height: 100px;
+            overflow: auto;
+            padding: 6px 0;
+        }
+
+        .diagnostic-entry {
+            display: grid;
+            grid-template-columns: 72px 58px minmax(0, 1fr);
+            gap: 7px;
+            padding: 3px 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        .diagnostic-time { color: #818b90; }
+        .diagnostic-source { color: #7ccbc0; }
+        .diagnostic-entry[data-level="warn"] .diagnostic-message { color: #ffd166; }
+        .diagnostic-entry[data-level="error"] .diagnostic-message { color: #ff7777; }
+        .diagnostic-entry[data-level="debug"] .diagnostic-message { color: #aab4b9; }
+
+        @media (max-width: 600px) {
+            #diagnostics-toggle { top: 62px; }
+            #diagnostics-panel { top: 98px; right: 6px; width: calc(100vw - 12px); max-height: 60vh; }
+            .diagnostic-entry { grid-template-columns: 58px 48px minmax(0, 1fr); gap: 4px; padding-inline: 5px; }
+        }
     </style>
     <!-- Ruffle Flash Engine -->
     <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
@@ -173,6 +257,18 @@
             </button>
         </div>
     </header>
+
+    <button id="diagnostics-toggle" type="button" aria-expanded="true">Diagnostics</button>
+    <section id="diagnostics-panel" aria-label="Application diagnostics">
+        <div class="diagnostics-header">
+            <strong>Application diagnostics</strong>
+            <div class="diagnostics-actions">
+                <button id="diagnostics-clear" type="button">Clear</button>
+                <button id="diagnostics-hide" type="button" aria-label="Hide diagnostics">Hide</button>
+            </div>
+        </div>
+        <div id="diagnostics-log" role="log" aria-live="polite"></div>
+    </section>
 
     <main class="app-main">
         <div id="module-container">
@@ -202,8 +298,103 @@
             const RAW_BASE_URL = `https://raw.githubusercontent.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/${GITHUB_BRANCH}`;
 
             let currentRole = 'host';
+            const diagnosticsLog = document.getElementById('diagnostics-log');
+            const diagnosticsPanel = document.getElementById('diagnostics-panel');
+            const diagnosticsToggle = document.getElementById('diagnostics-toggle');
+            const diagnosticMethods = ['log', 'info', 'warn', 'error', 'debug'];
+            const originalConsoleMethods = {};
+            let diagnosticFetch = null;
+
+            function describeValue(value) {
+                if (value instanceof Error) return value.stack || `${value.name}: ${value.message}`;
+                if (typeof value === 'string') return value;
+                try {
+                    return JSON.stringify(value);
+                } catch (_) {
+                    return String(value);
+                }
+            }
+
+            function logDiagnostic(source, level, ...values) {
+                if (!diagnosticsLog) return;
+                const wasAtBottom = diagnosticsLog.scrollHeight - diagnosticsLog.scrollTop - diagnosticsLog.clientHeight < 24;
+                const row = document.createElement('div');
+                row.className = 'diagnostic-entry';
+                row.dataset.level = level;
+                const time = document.createElement('span');
+                time.className = 'diagnostic-time';
+                time.textContent = new Date().toLocaleTimeString();
+                const sourceLabel = document.createElement('span');
+                sourceLabel.className = 'diagnostic-source';
+                sourceLabel.textContent = source;
+                const message = document.createElement('span');
+                message.className = 'diagnostic-message';
+                message.textContent = values.map(describeValue).join(' ');
+                row.append(time, sourceLabel, message);
+                diagnosticsLog.appendChild(row);
+                while (diagnosticsLog.children.length > 500) diagnosticsLog.firstElementChild.remove();
+                if (wasAtBottom) diagnosticsLog.scrollTop = diagnosticsLog.scrollHeight;
+            }
+
+            function installDiagnostics() {
+                diagnosticMethods.forEach((method) => {
+                    originalConsoleMethods[method] = console[method].bind(console);
+                    console[method] = (...values) => {
+                        logDiagnostic('console', method === 'warn' ? 'warn' : method === 'error' ? 'error' : 'info', ...values);
+                        originalConsoleMethods[method](...values);
+                    };
+                });
+                window.addEventListener('error', (event) => {
+                    logDiagnostic('window', 'error', event.message, event.filename, `${event.lineno}:${event.colno}`, event.error || '');
+                });
+                window.addEventListener('unhandledrejection', (event) => {
+                    logDiagnostic('promise', 'error', 'Unhandled rejection:', event.reason);
+                });
+                diagnosticFetch = window.fetch.bind(window);
+                window.fetch = async (...args) => {
+                    const resource = args[0];
+                    const url = typeof resource === 'string' ? resource : resource && resource.url || String(resource);
+                    logDiagnostic('fetch', 'debug', 'request', url);
+                    try {
+                        const response = await diagnosticFetch(...args);
+                        logDiagnostic('fetch', response.ok ? 'info' : 'warn', response.status, url);
+                        return response;
+                    } catch (error) {
+                        logDiagnostic('fetch', 'error', url, error);
+                        throw error;
+                    }
+                };
+                document.addEventListener('click', (event) => {
+                    const target = event.target.closest('button, label[for]');
+                    if (target) logDiagnostic('ui', 'info', 'click', target.innerText.trim() || target.getAttribute('aria-label') || target.id);
+                }, true);
+                document.addEventListener('change', (event) => {
+                    const target = event.target;
+                    if (target.matches('input[type="file"]')) {
+                        logDiagnostic('ui', 'info', 'file selection', target.files ? `${target.files.length} file(s)` : 'empty');
+                    } else if (target.matches('input, select')) {
+                        logDiagnostic('ui', 'info', 'change', target.id, target.type === 'checkbox' ? target.checked : target.value);
+                    }
+                }, true);
+                diagnosticsToggle.addEventListener('click', () => {
+                    diagnosticsPanel.hidden = !diagnosticsPanel.hidden;
+                    diagnosticsToggle.setAttribute('aria-expanded', String(!diagnosticsPanel.hidden));
+                });
+                document.getElementById('diagnostics-hide').addEventListener('click', () => {
+                    diagnosticsPanel.hidden = true;
+                    diagnosticsToggle.setAttribute('aria-expanded', 'false');
+                });
+                document.getElementById('diagnostics-clear').addEventListener('click', () => {
+                    diagnosticsLog.replaceChildren();
+                    logDiagnostic('diagnostics', 'info', 'Log cleared');
+                });
+                logDiagnostic('diagnostics', 'info', 'Global diagnostics initialized');
+            }
+
+            installDiagnostics();
 
             function setStatus(msg) {
+                logDiagnostic('status', 'info', msg);
                 const sb = document.getElementById("status-bar");
                 if (sb) sb.innerText = "Status: " + msg;
             }
@@ -333,7 +524,8 @@
                 selectRole: selectRole,
                 refreshCurrentModule: refreshCurrentModule,
                 loadFlashView: loadFlashView,
-                setStatus: setStatus
+                setStatus: setStatus,
+                logDiagnostic: logDiagnostic
             };
         })();
     </script>
