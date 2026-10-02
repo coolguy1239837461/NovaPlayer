@@ -168,6 +168,14 @@
             font: 11px/1.4 monospace;
         }
 
+        #diagnostics-panel.minimized {
+            width: min(500px, calc(100vw - 24px));
+            max-height: none;
+        }
+
+        #diagnostics-panel.minimized .diagnostics-controls,
+        #diagnostics-panel.minimized #diagnostics-log { display: none; }
+
         .diagnostics-header {
             display: flex;
             align-items: center;
@@ -193,6 +201,36 @@
             cursor: pointer;
         }
 
+        .diagnostics-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            border-bottom: 1px solid #394147;
+            color: #c5cdd1;
+        }
+
+        .diagnostics-cursor-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .diagnostics-cursor-toggle input { accent-color: #00ffcc; }
+
+        .diagnostics-frequency-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .diagnostics-frequency-control input { flex: 1; min-width: 55px; accent-color: #00ffcc; }
+        #diagnostics-frequency-value { min-width: 48px; color: #00ffcc; text-align: right; }
+
         #diagnostics-log {
             min-height: 100px;
             overflow: auto;
@@ -217,6 +255,9 @@
 
         @media (max-width: 600px) {
             #diagnostics-panel { top: 62px; right: 6px; width: calc(100vw - 12px); max-height: 60vh; }
+            #diagnostics-panel.minimized { width: calc(100vw - 12px); }
+            .diagnostics-header { flex-wrap: wrap; gap: 6px; }
+            .diagnostics-controls { flex-wrap: wrap; gap: 6px 12px; }
             .diagnostic-entry { grid-template-columns: 58px 48px minmax(0, 1fr); gap: 4px; padding-inline: 5px; }
         }
     </style>
@@ -248,7 +289,19 @@
             <div class="diagnostics-actions">
                 <button id="diagnostics-export" type="button">Export</button>
                 <button id="diagnostics-clear" type="button">Clear</button>
+                <button id="diagnostics-minimize" type="button" aria-expanded="true">Minimize</button>
             </div>
+        </div>
+        <div class="diagnostics-controls">
+            <label class="diagnostics-cursor-toggle">
+                <input id="diagnostics-cursor-enabled" type="checkbox">
+                <span>Log cursor position</span>
+            </label>
+            <label class="diagnostics-frequency-control" for="diagnostics-cursor-frequency">
+                <span>Position interval</span>
+                <input id="diagnostics-cursor-frequency" type="range" min="100" max="2000" step="100" value="500">
+                <output id="diagnostics-frequency-value" for="diagnostics-cursor-frequency">500 ms</output>
+            </label>
         </div>
         <div id="diagnostics-log" role="log" aria-live="polite"></div>
     </section>
@@ -283,11 +336,16 @@
             let currentRole = 'host';
             const assetSources = new Map();
             const diagnosticsLog = document.getElementById('diagnostics-log');
+            const diagnosticsPanel = document.getElementById('diagnostics-panel');
             const diagnosticEntries = [];
             const diagnosticMethods = ['log', 'info', 'warn', 'error', 'debug', 'trace', 'table', 'assert', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'count', 'countReset', 'time', 'timeEnd'];
             const originalConsoleMethods = {};
             let diagnosticFetch = null;
             let diagnosticErrorCount = 0;
+            let diagnosticTotalCount = 0;
+            let cursorLoggingEnabled = false;
+            let cursorLogInterval = 500;
+            let lastCursorLogAt = 0;
 
             function describeValue(value) {
                 if (value instanceof Error) return value.stack || `${value.name}: ${value.message}`;
@@ -303,8 +361,10 @@
                 if (!diagnosticsLog) return;
                 const entry = { time: new Date().toISOString(), source, level, message: values.map(describeValue).join(' ') };
                 diagnosticEntries.push(entry);
+                diagnosticTotalCount++;
+                if (diagnosticEntries.length > 10000) diagnosticEntries.shift();
                 if (level === 'error') diagnosticErrorCount++;
-                document.getElementById('diagnostics-count').textContent = `${diagnosticEntries.length} events`;
+                document.getElementById('diagnostics-count').textContent = `${diagnosticTotalCount} events`;
                 document.getElementById('diagnostics-error-count').textContent = `${diagnosticErrorCount} errors`;
                 const wasAtBottom = diagnosticsLog.scrollHeight - diagnosticsLog.scrollTop - diagnosticsLog.clientHeight < 24;
                 const row = document.createElement('div');
@@ -366,14 +426,14 @@
                 };
                 const interactionEvents = [
                     'click', 'dblclick', 'auxclick', 'contextmenu',
-                    'pointerdown', 'pointerup', 'pointercancel', 'pointerover', 'pointerout',
-                    'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup',
+                    'pointerdown', 'pointerup', 'pointercancel',
                     'keydown', 'keyup', 'beforeinput', 'input', 'change', 'focusin', 'focusout',
                     'submit', 'reset', 'select', 'dragstart', 'dragenter', 'dragover', 'dragleave', 'drop', 'dragend',
-                    'wheel', 'scroll', 'copy', 'cut', 'paste', 'compositionstart', 'compositionupdate', 'compositionend'
+                    'wheel', 'copy', 'cut', 'paste', 'compositionstart', 'compositionupdate', 'compositionend'
                 ];
                 interactionEvents.forEach((eventName) => document.addEventListener(eventName, (event) => {
                     const target = event.target;
+                    if (event.type === 'wheel' && target instanceof Element && target.closest('#diagnostics-panel')) return;
                     const descriptor = target instanceof Element
                         ? `${target.tagName.toLowerCase()}${target.id ? `#${target.id}` : ''}${target.getAttribute('aria-label') ? `[${target.getAttribute('aria-label')}]` : ''}`
                         : String(target);
@@ -395,6 +455,17 @@
                     }
                     logDiagnostic('interaction', 'info', event.type, descriptor, ...details);
                 }, true));
+
+                document.addEventListener('pointermove', (event) => {
+                    if (!cursorLoggingEnabled) return;
+                    const now = performance.now();
+                    if (now - lastCursorLogAt < cursorLogInterval) return;
+                    lastCursorLogAt = now;
+                    const target = event.target instanceof Element
+                        ? `${event.target.tagName.toLowerCase()}${event.target.id ? `#${event.target.id}` : ''}`
+                        : String(event.target);
+                    logDiagnostic('cursor', 'debug', `x=${Math.round(event.clientX)}`, `y=${Math.round(event.clientY)}`, `pointer=${event.pointerType}`, `target=${target}`);
+                }, true);
 
                 ['online', 'offline', 'resize', 'orientationchange', 'pageshow', 'pagehide'].forEach((eventName) => {
                     window.addEventListener(eventName, (event) => {
@@ -445,9 +516,29 @@
                     diagnosticsLog.replaceChildren();
                     diagnosticEntries.length = 0;
                     diagnosticErrorCount = 0;
+                    diagnosticTotalCount = 0;
                     document.getElementById('diagnostics-count').textContent = '0 events';
                     document.getElementById('diagnostics-error-count').textContent = '0 errors';
                     logDiagnostic('diagnostics', 'info', 'Log cleared');
+                });
+                const cursorToggle = document.getElementById('diagnostics-cursor-enabled');
+                const cursorFrequency = document.getElementById('diagnostics-cursor-frequency');
+                const cursorFrequencyValue = document.getElementById('diagnostics-frequency-value');
+                cursorToggle.addEventListener('change', () => {
+                    cursorLoggingEnabled = cursorToggle.checked;
+                    logDiagnostic('diagnostics', 'info', `Cursor position logging ${cursorLoggingEnabled ? 'enabled' : 'disabled'}`, `interval=${cursorLogInterval}ms`);
+                });
+                cursorFrequency.addEventListener('input', () => {
+                    cursorLogInterval = Number(cursorFrequency.value);
+                    cursorFrequencyValue.value = `${cursorLogInterval} ms`;
+                    cursorFrequencyValue.textContent = `${cursorLogInterval} ms`;
+                    logDiagnostic('diagnostics', 'info', 'Cursor position interval changed', `${cursorLogInterval}ms`);
+                });
+                document.getElementById('diagnostics-minimize').addEventListener('click', (event) => {
+                    const minimized = diagnosticsPanel.classList.toggle('minimized');
+                    event.currentTarget.textContent = minimized ? 'Expand' : 'Minimize';
+                    event.currentTarget.setAttribute('aria-expanded', String(!minimized));
+                    logDiagnostic('diagnostics', 'info', minimized ? 'Console minimized' : 'Console expanded');
                 });
                 logDiagnostic('diagnostics', 'info', 'Global diagnostics initialized');
             }
