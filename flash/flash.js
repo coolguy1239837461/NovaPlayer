@@ -2,7 +2,8 @@ window.FlashModule = (function() {
     let activePlayer = null;
     let activeSwfUrl = null;
     let originalFetch = null;
-    let assetBlobUrls = new Map();
+    const fileObjectsMap = new Map();
+    const assetBlobUrls = new Map();
     let outboundStream = null;
     const viewerConnections = new Map();
 
@@ -85,8 +86,11 @@ window.FlashModule = (function() {
         }
 
         installAssetFetch(selectedFilesMap);
-        if (activeSwfUrl) URL.revokeObjectURL(activeSwfUrl);
-        activeSwfUrl = URL.createObjectURL(mainSwfEntry);
+        activeSwfUrl = getOrCreateBlobUrl(mainSwfEntry.name.toLowerCase());
+        if (!activeSwfUrl) {
+            if (window.NovaApp) window.NovaApp.setStatus(`Could not index ${mainSwfEntry.name} for Ruffle.`);
+            return;
+        }
         await new Promise((resolve) => {
             loadSwf(activeSwfUrl, (canvas) => {
                 if (canvas && canvas.captureStream) outboundStream = canvas.captureStream(30);
@@ -104,57 +108,61 @@ window.FlashModule = (function() {
     function installAssetFetch(filesMap) {
         if (originalFetch) window.fetch = originalFetch;
         originalFetch = window.fetch.bind(window);
-        assetBlobUrls = new Map();
-
-        const indexedFiles = Array.from(filesMap.entries()).map(([path, file]) => ({
-            path: normalizeAssetPath(path),
-            file
-        }));
+        fileObjectsMap.clear();
+        assetBlobUrls.forEach((url) => URL.revokeObjectURL(url));
+        assetBlobUrls.clear();
+        filesMap.forEach((file, path) => indexFileMetadata(file, path));
 
         window.fetch = async function(resource, options) {
-            const requestedUrl = typeof resource === 'string' || resource instanceof URL
-                ? resource.toString()
-                : resource.url;
-            let requestedPath;
+            const urlString = typeof resource === 'string' ? resource : (resource.url || '');
+            let decodedPath = urlString;
             try {
-                requestedPath = normalizeAssetPath(new URL(requestedUrl, window.location.href).pathname);
-            } catch (_) {
-                return originalFetch(resource, options);
+                decodedPath = new URL(urlString, window.location.href).pathname;
+            } catch (_) {}
+            try {
+                decodedPath = decodeURIComponent(decodedPath);
+            } catch (_) {}
+            decodedPath = decodedPath.toLowerCase();
+
+            const requestedFile = decodedPath.split('/').pop();
+            let matchedKey = requestedFile;
+            if (!fileObjectsMap.has(matchedKey)) {
+                for (const key of fileObjectsMap.keys()) {
+                    if (decodedPath.endsWith(key) || key.endsWith(requestedFile)) {
+                        matchedKey = key;
+                        break;
+                    }
+                }
             }
 
-            const match = findAsset(requestedPath, indexedFiles);
-            if (!match) return originalFetch(resource, options);
-
-            let blobUrl = assetBlobUrls.get(match.path);
-            if (!blobUrl) {
-                blobUrl = URL.createObjectURL(match.file);
-                assetBlobUrls.set(match.path, blobUrl);
-            }
-            return originalFetch(blobUrl, options);
+            const blobUrl = getOrCreateBlobUrl(matchedKey);
+            return blobUrl ? originalFetch(blobUrl, options) : originalFetch(resource, options);
         };
 
         if (window.NovaApp) {
-            window.NovaApp.setStatus(`Indexed ${indexedFiles.length} game files for Ruffle asset loading.`);
+            window.NovaApp.setStatus(`Indexed ${filesMap.size} game files for Ruffle asset loading.`);
         }
     }
 
-    function normalizeAssetPath(path) {
-        let normalized = path;
-        try {
-            normalized = decodeURIComponent(path);
-        } catch (_) {}
-        return normalized.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+    function indexFileMetadata(file, path) {
+        const cleanPath = path.replace(/^[\/\\]+/, '').toLowerCase();
+        const filename = file.name.toLowerCase();
+        fileObjectsMap.set(filename, file);
+        fileObjectsMap.set(cleanPath, file);
+
+        const pathSegments = cleanPath.split(/[\/\\]/);
+        for (let index = 1; index < pathSegments.length; index++) {
+            fileObjectsMap.set(pathSegments.slice(index).join('/'), file);
+        }
     }
 
-    function findAsset(requestedPath, indexedFiles) {
-        const exactMatch = indexedFiles.find((entry) => entry.path === requestedPath);
-        if (exactMatch) return exactMatch;
-
-        const suffixMatch = indexedFiles.find((entry) => requestedPath.endsWith(`/${entry.path}`));
-        if (suffixMatch) return suffixMatch;
-
-        const requestedName = requestedPath.split('/').pop();
-        return indexedFiles.find((entry) => entry.path.split('/').pop() === requestedName) || null;
+    function getOrCreateBlobUrl(lookupKey) {
+        if (assetBlobUrls.has(lookupKey)) return assetBlobUrls.get(lookupKey);
+        const file = fileObjectsMap.get(lookupKey);
+        if (!file) return null;
+        const blobUrl = URL.createObjectURL(file);
+        assetBlobUrls.set(lookupKey, blobUrl);
+        return blobUrl;
     }
 
     function addViewer(clientId, peer) {
@@ -205,12 +213,10 @@ window.FlashModule = (function() {
             outboundStream.getTracks().forEach((track) => track.stop());
             outboundStream = null;
         }
-        if (activeSwfUrl) {
-            URL.revokeObjectURL(activeSwfUrl);
-            activeSwfUrl = null;
-        }
         assetBlobUrls.forEach((url) => URL.revokeObjectURL(url));
         assetBlobUrls.clear();
+        activeSwfUrl = null;
+        fileObjectsMap.clear();
         if (originalFetch) {
             window.fetch = originalFetch;
             originalFetch = null;
