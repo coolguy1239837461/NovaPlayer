@@ -151,23 +151,9 @@
         .action-btn:hover { background: #00cca3; }
         .action-btn:disabled { background: #444; color: #777; cursor: not-allowed; }
 
-        #diagnostics-toggle {
-            position: fixed;
-            top: 64px;
-            right: 12px;
-            z-index: 10002;
-            padding: 7px 10px;
-            border: 1px solid #687078;
-            border-radius: 4px;
-            background: #181818;
-            color: #e8eef0;
-            font: 11px monospace;
-            cursor: pointer;
-        }
-
         #diagnostics-panel {
             position: fixed;
-            top: 100px;
+            top: 64px;
             right: 12px;
             z-index: 10001;
             display: flex;
@@ -182,8 +168,6 @@
             font: 11px/1.4 monospace;
         }
 
-        #diagnostics-panel[hidden] { display: none; }
-
         .diagnostics-header {
             display: flex;
             align-items: center;
@@ -194,6 +178,8 @@
         }
 
         .diagnostics-header strong { color: #00ffcc; }
+        #diagnostics-count { color: #aab4b9; }
+        #diagnostics-error-count { color: #ff7777; font-weight: bold; }
 
         .diagnostics-actions { display: flex; gap: 6px; }
 
@@ -230,14 +216,10 @@
         .diagnostic-entry[data-level="debug"] .diagnostic-message { color: #aab4b9; }
 
         @media (max-width: 600px) {
-            #diagnostics-toggle { top: 62px; }
-            #diagnostics-panel { top: 98px; right: 6px; width: calc(100vw - 12px); max-height: 60vh; }
+            #diagnostics-panel { top: 62px; right: 6px; width: calc(100vw - 12px); max-height: 60vh; }
             .diagnostic-entry { grid-template-columns: 58px 48px minmax(0, 1fr); gap: 4px; padding-inline: 5px; }
         }
     </style>
-    <!-- Ruffle Flash Engine -->
-    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
-    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -258,13 +240,14 @@
         </div>
     </header>
 
-    <button id="diagnostics-toggle" type="button" aria-expanded="true">Diagnostics</button>
     <section id="diagnostics-panel" aria-label="Application diagnostics">
         <div class="diagnostics-header">
             <strong>Application diagnostics</strong>
+            <span id="diagnostics-count">0 events</span>
+            <span id="diagnostics-error-count">0 errors</span>
             <div class="diagnostics-actions">
+                <button id="diagnostics-export" type="button">Export</button>
                 <button id="diagnostics-clear" type="button">Clear</button>
-                <button id="diagnostics-hide" type="button" aria-label="Hide diagnostics">Hide</button>
             </div>
         </div>
         <div id="diagnostics-log" role="log" aria-live="polite"></div>
@@ -299,11 +282,11 @@
 
             let currentRole = 'host';
             const diagnosticsLog = document.getElementById('diagnostics-log');
-            const diagnosticsPanel = document.getElementById('diagnostics-panel');
-            const diagnosticsToggle = document.getElementById('diagnostics-toggle');
-            const diagnosticMethods = ['log', 'info', 'warn', 'error', 'debug'];
+            const diagnosticEntries = [];
+            const diagnosticMethods = ['log', 'info', 'warn', 'error', 'debug', 'trace', 'table', 'assert', 'group', 'groupCollapsed', 'groupEnd', 'clear', 'count', 'countReset', 'time', 'timeEnd'];
             const originalConsoleMethods = {};
             let diagnosticFetch = null;
+            let diagnosticErrorCount = 0;
 
             function describeValue(value) {
                 if (value instanceof Error) return value.stack || `${value.name}: ${value.message}`;
@@ -317,38 +300,54 @@
 
             function logDiagnostic(source, level, ...values) {
                 if (!diagnosticsLog) return;
+                const entry = { time: new Date().toISOString(), source, level, message: values.map(describeValue).join(' ') };
+                diagnosticEntries.push(entry);
+                if (level === 'error') diagnosticErrorCount++;
+                document.getElementById('diagnostics-count').textContent = `${diagnosticEntries.length} events`;
+                document.getElementById('diagnostics-error-count').textContent = `${diagnosticErrorCount} errors`;
                 const wasAtBottom = diagnosticsLog.scrollHeight - diagnosticsLog.scrollTop - diagnosticsLog.clientHeight < 24;
                 const row = document.createElement('div');
                 row.className = 'diagnostic-entry';
                 row.dataset.level = level;
                 const time = document.createElement('span');
                 time.className = 'diagnostic-time';
-                time.textContent = new Date().toLocaleTimeString();
+                time.textContent = new Date(entry.time).toLocaleTimeString();
                 const sourceLabel = document.createElement('span');
                 sourceLabel.className = 'diagnostic-source';
                 sourceLabel.textContent = source;
                 const message = document.createElement('span');
                 message.className = 'diagnostic-message';
-                message.textContent = values.map(describeValue).join(' ');
+                message.textContent = entry.message;
                 row.append(time, sourceLabel, message);
                 diagnosticsLog.appendChild(row);
-                while (diagnosticsLog.children.length > 500) diagnosticsLog.firstElementChild.remove();
+                while (diagnosticsLog.children.length > 2000) diagnosticsLog.firstElementChild.remove();
                 if (wasAtBottom) diagnosticsLog.scrollTop = diagnosticsLog.scrollHeight;
             }
 
             function installDiagnostics() {
                 diagnosticMethods.forEach((method) => {
+                    if (typeof console[method] !== 'function') return;
                     originalConsoleMethods[method] = console[method].bind(console);
                     console[method] = (...values) => {
-                        logDiagnostic('console', method === 'warn' ? 'warn' : method === 'error' ? 'error' : 'info', ...values);
+                        const level = method === 'warn' ? 'warn' : method === 'error' || method === 'assert' ? 'error' : 'info';
+                        if (method !== 'assert' || values[0] === false) logDiagnostic('console', level, method, ...values);
                         originalConsoleMethods[method](...values);
                     };
                 });
                 window.addEventListener('error', (event) => {
-                    logDiagnostic('window', 'error', event.message, event.filename, `${event.lineno}:${event.colno}`, event.error || '');
+                    if (event.target === window) logDiagnostic('window', 'error', event.message, event.filename, `${event.lineno}:${event.colno}`, event.error || '');
                 });
+                document.addEventListener('error', (event) => {
+                    const target = event.target;
+                    if (target !== document && target !== window) {
+                        logDiagnostic('resource', 'error', target.currentSrc || target.src || target.href || target.tagName, 'failed to load');
+                    }
+                }, true);
                 window.addEventListener('unhandledrejection', (event) => {
                     logDiagnostic('promise', 'error', 'Unhandled rejection:', event.reason);
+                });
+                window.addEventListener('securitypolicyviolation', (event) => {
+                    logDiagnostic('security', 'error', event.violatedDirective, event.blockedURI, event.sourceFile, event.lineNumber);
                 });
                 diagnosticFetch = window.fetch.bind(window);
                 window.fetch = async (...args) => {
@@ -364,28 +363,89 @@
                         throw error;
                     }
                 };
-                document.addEventListener('click', (event) => {
-                    const target = event.target.closest('button, label[for]');
-                    if (target) logDiagnostic('ui', 'info', 'click', target.innerText.trim() || target.getAttribute('aria-label') || target.id);
-                }, true);
-                document.addEventListener('change', (event) => {
+                const interactionEvents = [
+                    'click', 'dblclick', 'auxclick', 'contextmenu',
+                    'pointerdown', 'pointerup', 'pointercancel', 'pointerover', 'pointerout',
+                    'touchstart', 'touchend', 'touchcancel', 'mousedown', 'mouseup',
+                    'keydown', 'keyup', 'beforeinput', 'input', 'change', 'focusin', 'focusout',
+                    'submit', 'reset', 'select', 'dragstart', 'dragenter', 'dragover', 'dragleave', 'drop', 'dragend',
+                    'wheel', 'scroll', 'copy', 'cut', 'paste', 'compositionstart', 'compositionupdate', 'compositionend'
+                ];
+                interactionEvents.forEach((eventName) => document.addEventListener(eventName, (event) => {
                     const target = event.target;
-                    if (target.matches('input[type="file"]')) {
-                        logDiagnostic('ui', 'info', 'file selection', target.files ? `${target.files.length} file(s)` : 'empty');
-                    } else if (target.matches('input, select')) {
-                        logDiagnostic('ui', 'info', 'change', target.id, target.type === 'checkbox' ? target.checked : target.value);
+                    const descriptor = target instanceof Element
+                        ? `${target.tagName.toLowerCase()}${target.id ? `#${target.id}` : ''}${target.getAttribute('aria-label') ? `[${target.getAttribute('aria-label')}]` : ''}`
+                        : String(target);
+                    const details = [];
+                    if (target instanceof Element && target.closest('button, label, a')) {
+                        details.push(`text="${target.closest('button, label, a').textContent.trim().slice(0, 100)}"`);
                     }
-                }, true);
-                diagnosticsToggle.addEventListener('click', () => {
-                    diagnosticsPanel.hidden = !diagnosticsPanel.hidden;
-                    diagnosticsToggle.setAttribute('aria-expanded', String(!diagnosticsPanel.hidden));
+                    if (event instanceof KeyboardEvent) details.push(`key=${event.key}`, `code=${event.code}`, `repeat=${event.repeat}`);
+                    if (event instanceof PointerEvent) details.push(`pointer=${event.pointerType}`, `x=${Math.round(event.clientX)}`, `y=${Math.round(event.clientY)}`);
+                    if (event instanceof WheelEvent) details.push(`delta=(${Math.round(event.deltaX)},${Math.round(event.deltaY)})`);
+                    if (event.dataTransfer) details.push(`files=${Array.from(event.dataTransfer.files || [], (file) => file.name).join(',') || 'none'}`);
+                    if (target instanceof HTMLInputElement) {
+                        if (target.type === 'password') details.push('value=[redacted]');
+                        else if (target.type === 'file') details.push(`files=${Array.from(target.files || [], (file) => file.name).join(',') || 'none'}`);
+                        else if (target.type === 'checkbox' || target.type === 'radio') details.push(`checked=${target.checked}`);
+                        else if (target.type !== 'button' && target.type !== 'submit') details.push(`value=${target.value}`);
+                    } else if (target instanceof HTMLSelectElement) {
+                        details.push(`value=${target.value}`);
+                    }
+                    logDiagnostic('interaction', 'info', event.type, descriptor, ...details);
+                }, true));
+
+                ['online', 'offline', 'resize', 'orientationchange', 'pageshow', 'pagehide'].forEach((eventName) => {
+                    window.addEventListener(eventName, (event) => {
+                        logDiagnostic('browser', 'info', event.type, `viewport=${window.innerWidth}x${window.innerHeight}`, `online=${navigator.onLine}`);
+                    });
                 });
-                document.getElementById('diagnostics-hide').addEventListener('click', () => {
-                    diagnosticsPanel.hidden = true;
-                    diagnosticsToggle.setAttribute('aria-expanded', 'false');
+                document.addEventListener('visibilitychange', () => {
+                    logDiagnostic('browser', 'info', 'visibilitychange', document.visibilityState);
+                });
+
+                const originalXhrOpen = XMLHttpRequest.prototype.open;
+                const originalXhrSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                    this.__diagnosticRequest = { method, url: String(url) };
+                    return originalXhrOpen.call(this, method, url, ...rest);
+                };
+                XMLHttpRequest.prototype.send = function(...args) {
+                    const request = this.__diagnosticRequest || { method: 'unknown', url: 'unknown' };
+                    logDiagnostic('xhr', 'debug', 'request', request.method, request.url);
+                    this.addEventListener('loadend', () => logDiagnostic('xhr', this.status >= 400 ? 'warn' : 'info', 'complete', this.status, request.url), { once: true });
+                    this.addEventListener('error', () => logDiagnostic('xhr', 'error', 'failed', request.url), { once: true });
+                    return originalXhrSend.apply(this, args);
+                };
+
+                if ('PerformanceObserver' in window) {
+                    try {
+                        new PerformanceObserver((list) => list.getEntries().forEach((entry) => {
+                            if (entry.entryType === 'resource') {
+                                logDiagnostic('resource', 'debug', entry.initiatorType, entry.name, `${Math.round(entry.duration)}ms`, `bytes=${entry.transferSize || 0}`);
+                            }
+                        })).observe({ type: 'resource', buffered: true });
+                    } catch (error) {
+                        logDiagnostic('diagnostics', 'warn', 'Resource timing observer unavailable', error);
+                    }
+                }
+
+                document.getElementById('diagnostics-export').addEventListener('click', () => {
+                    const blob = new Blob([JSON.stringify(diagnosticEntries, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const anchor = document.createElement('a');
+                    anchor.href = url;
+                    anchor.download = `novaplayer-diagnostics-${Date.now()}.json`;
+                    anchor.click();
+                    URL.revokeObjectURL(url);
+                    logDiagnostic('diagnostics', 'info', 'Full session log exported');
                 });
                 document.getElementById('diagnostics-clear').addEventListener('click', () => {
                     diagnosticsLog.replaceChildren();
+                    diagnosticEntries.length = 0;
+                    diagnosticErrorCount = 0;
+                    document.getElementById('diagnostics-count').textContent = '0 events';
+                    document.getElementById('diagnostics-error-count').textContent = '0 errors';
                     logDiagnostic('diagnostics', 'info', 'Log cleared');
                 });
                 logDiagnostic('diagnostics', 'info', 'Global diagnostics initialized');
@@ -394,7 +454,8 @@
             installDiagnostics();
 
             function setStatus(msg) {
-                logDiagnostic('status', 'info', msg);
+                const level = /\b(error|failed|failure|not found|could not|unable)\b/i.test(msg) ? 'error' : 'info';
+                logDiagnostic('status', level, msg);
                 const sb = document.getElementById("status-bar");
                 if (sb) sb.innerText = "Status: " + msg;
             }
@@ -529,5 +590,8 @@
             };
         })();
     </script>
+    <!-- Load engines after diagnostics is active so their failures are captured. -->
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 </body>
 </html>
