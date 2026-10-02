@@ -1,0 +1,26 @@
+<div class="host-container">
+    <div class="panel-card">
+        <h3>🖥️ Host Setup (Mac)</h3>
+        <p>Select or drag & drop the folder containing your SWF game files and assets.</p>
+
+        <div id="drop-zone" class="drop-zone">
+            <strong>Drop Game Folder Here</strong>
+            <p>Select main folder containing game assets & SWF</p>
+            <input type="file" id="folder-input" webkitdirectory directory multiple>
+        </div>
+
+        <button class="action-btn" id="gen-code-btn" disabled>1. Generate Room Code</button>
+
+        <div id="room-info-area" style="display:none; margin-top: 14px;">
+            <p style="margin-bottom: 4px; font-size: 13px; color: #aaa;">Active Room Code:</p>
+            <div id="room-code-display" class="room-code-badge">----</div>
+
+            <p style="margin-top: 12px; margin-bottom: 4px; font-size: 13px; color: #aaa;">Connected Players Lobby:</p>
+            <div class="lobby-box" id="player-lobby-list">
+                <div class="empty-lobby-msg">Waiting for players to join... (Share code with Chromebook)</div>
+            </div>
+
+            <button class="action-btn action-btn-warning" id="start-stream-btn" disabled>2. Broadcast Game to Lobby</button>
+        </div>
+    </div>
+</div>

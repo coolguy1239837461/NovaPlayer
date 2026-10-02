@@ -1,0 +1,107 @@
+.host-container {
+    width: 100%;
+    max-width: 650px;
+    margin: 0 auto;
+}
+
+.panel-card {
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.panel-card h3 {
+    color: #00ffcc;
+    font-size: 18px;
+    margin-bottom: 6px;
+}
+
+.panel-card p {
+    color: #aaa;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.drop-zone {
+    border: 2px dashed #444;
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    background: #161616;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    margin-bottom: 16px;
+}
+
+.drop-zone:hover, .drop-zone.hover {
+    border-color: #00ffcc;
+    background: #1a2624;
+}
+
+.drop-zone strong {
+    display: block;
+    color: #fff;
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
+.drop-zone p {
+    color: #888;
+    font-size: 12px;
+    margin: 0;
+}
+
+.room-code-badge {
+    font-size: 24px;
+    font-family: monospace;
+    color: #00ffcc;
+    font-weight: bold;
+    letter-spacing: 2px;
+    background: #121212;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid #333;
+    display: inline-block;
+}
+
+.lobby-box {
+    background: #121212;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 8px;
+    max-height: 160px;
+    overflow-y: auto;
+}
+
+.empty-lobby-msg {
+    color: #666;
+    font-family: monospace;
+    font-size: 12px;
+    text-align: center;
+    padding: 10px;
+}
+
+.player-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #1a1a1a;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    font-family: monospace;
+    font-size: 12px;
+    border-left: 3px solid #00ffcc;
+}
+
+.action-btn-warning {
+    background: #ffaa00 !important;
+    color: #000 !important;
+}
+
+.action-btn-warning:hover {
+    background: #e69900 !important;
+}

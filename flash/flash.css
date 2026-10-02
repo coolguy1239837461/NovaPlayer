@@ -1,0 +1,62 @@
+.game-view {
+    width: 100%;
+    height: calc(100vh - 100px);
+    position: relative;
+    background: #000;
+}
+
+.flash-container, .remote-video-container {
+    width: 100%;
+    height: 100%;
+    display: none;
+}
+
+.remote-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+    display: none;
+}
+
+ruffle-player {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.waiting-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 20px;
+}
+
+.waiting-screen h3 {
+    color: #00ffcc;
+    font-size: 22px;
+    margin-bottom: 10px;
+}
+
+.waiting-screen p {
+    color: #aaa;
+    font-size: 14px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top-color: #00ffcc;
+    border-radius: 50%;
+    animation: flash-spin 1s linear infinite;
+    margin-top: 20px;
+}
+
+@keyframes flash-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
