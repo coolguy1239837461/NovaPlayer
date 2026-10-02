@@ -24,84 +24,85 @@
     margin-bottom: 16px;
 }
 
-.drop-zone {
-    border: 2px dashed #444;
-    border-radius: 8px;
-    padding: 24px;
-    text-align: center;
-    background: #161616;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
+.form-group {
     margin-bottom: 16px;
 }
 
-.drop-zone:hover, .drop-zone.hover {
-    border-color: #00ffcc;
-    background: #1a2624;
-}
-
-.drop-zone strong {
+.form-group label {
     display: block;
-    color: #fff;
-    font-size: 15px;
-    margin-bottom: 4px;
-}
-
-.drop-zone p {
     color: #888;
     font-size: 12px;
-    margin: 0;
-}
-
-.room-code-badge {
-    font-size: 24px;
-    font-family: monospace;
-    color: #00ffcc;
-    font-weight: bold;
-    letter-spacing: 2px;
-    background: #121212;
-    padding: 8px 14px;
-    border-radius: 6px;
-    border: 1px solid #333;
-    display: inline-block;
-}
-
-.lobby-box {
-    background: #121212;
-    border: 1px solid #333;
-    border-radius: 8px;
-    padding: 12px;
-    margin-top: 8px;
-    max-height: 160px;
-    overflow-y: auto;
-}
-
-.empty-lobby-msg {
-    color: #666;
-    font-family: monospace;
-    font-size: 12px;
-    text-align: center;
-    padding: 10px;
-}
-
-.player-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    background: #1a1a1a;
-    border-radius: 4px;
     margin-bottom: 6px;
     font-family: monospace;
+}
+
+.secondary-btn {
+    background: #2a2a2a;
+    color: #00ffcc;
+    border: 1px solid #00ffcc;
+}
+.secondary-btn:hover {
+    background: #00ffcc;
+    color: #000;
+}
+
+.danger-btn {
+    background: #ff4444;
+    color: #fff;
+    margin-top: 16px;
+}
+.danger-btn:hover {
+    background: #cc0000;
+}
+
+.folder-display {
+    display: block;
+    margin-top: 8px;
+    font-family: monospace;
     font-size: 12px;
-    border-left: 3px solid #00ffcc;
+    color: #888;
+    word-break: break-all;
 }
 
-.action-btn-warning {
-    background: #ffaa00 !important;
-    color: #000 !important;
+.dropdown-select {
+    width: 100%;
+    padding: 10px;
+    background: #161616;
+    border: 1px solid #444;
+    color: #00ffcc;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 14px;
+    outline: none;
 }
 
-.action-btn-warning:hover {
-    background: #e69900 !important;
+.room-code-display {
+    font-size: 32px;
+    font-family: monospace;
+    font-weight: bold;
+    color: #00ffcc;
+    background: #121212;
+    border: 1px dashed #444;
+    padding: 12px;
+    text-align: center;
+    border-radius: 8px;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+}
+
+.connection-status-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #161616;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.status-indicator {
+    width: 105px; height: 10px; border-radius: 50%; background: #ffaa00;
+    display: inline-block; box-shadow: 0 0 8px #ffaa00;
 }

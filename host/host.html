@@ -1,26 +1,34 @@
-<div class="host-container">
+<div class="host-container" id="host-setup-card">
     <div class="panel-card">
         <h3>🖥️ Host Setup (Mac)</h3>
-        <p>Select or drag & drop the folder containing your SWF game files and assets.</p>
+        <p>Select your game folder containing your main <code>.swf</code> file and assets.</p>
 
-        <div id="drop-zone" class="drop-zone">
-            <strong>Drop Game Folder Here</strong>
-            <p>Select main folder containing game assets & SWF</p>
-            <input type="file" id="folder-input" webkitdirectory directory multiple>
+        <div class="form-group">
+            <button class="action-btn secondary-btn" id="host-select-folder-btn">📁 Select Game Folder</button>
+            <span id="selected-folder-name" class="folder-display">No folder selected</span>
         </div>
 
-        <button class="action-btn" id="gen-code-btn" disabled>1. Generate Room Code</button>
-
-        <div id="room-info-area" style="display:none; margin-top: 14px;">
-            <p style="margin-bottom: 4px; font-size: 13px; color: #aaa;">Active Room Code:</p>
-            <div id="room-code-display" class="room-code-badge">----</div>
-
-            <p style="margin-top: 12px; margin-bottom: 4px; font-size: 13px; color: #aaa;">Connected Players Lobby:</p>
-            <div class="lobby-box" id="player-lobby-list">
-                <div class="empty-lobby-msg">Waiting for players to join... (Share code with Chromebook)</div>
-            </div>
-
-            <button class="action-btn action-btn-warning" id="start-stream-btn" disabled>2. Broadcast Game to Lobby</button>
+        <div class="form-group" id="swf-select-group" style="display:none;">
+            <label for="swf-file-select">Select Main SWF File</label>
+            <select id="swf-file-select" class="dropdown-select"></select>
         </div>
+
+        <button class="action-btn" id="host-start-btn" disabled>Start Hosting Session</button>
+    </div>
+</div>
+
+<div class="host-container" id="host-active-card" style="display:none;">
+    <div class="panel-card">
+        <h3>⚡ Host Live Session</h3>
+        <p>Share this Room Code with the Chromebook client:</p>
+        
+        <div class="room-code-display" id="active-room-code">----</div>
+        
+        <div class="connection-status-box">
+            <span class="status-indicator"></span>
+            <span id="host-peer-status">Waiting for client connection...</span>
+        </div>
+
+        <button class="action-btn danger-btn" id="host-stop-btn">End Session</button>
     </div>
 </div>
