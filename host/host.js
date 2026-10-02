@@ -19,14 +19,21 @@ window.HostModule = (function() {
     ];
 
     function init() {
-        const folderBtn = document.getElementById('host-select-folder-btn');
         const folderInput = document.getElementById('host-folder-fallback');
+        const folderDropzone = document.getElementById('host-folder-dropzone');
         const startBtn = document.getElementById('host-start-btn');
         const stopBtn = document.getElementById('host-stop-btn');
         const launchBtn = document.getElementById('host-launch-game-btn');
 
-        if (folderBtn) folderBtn.onclick = handleFolderSelection;
         if (folderInput) folderInput.onchange = handleFallbackFolderSelection;
+        if (folderDropzone) {
+            folderDropzone.ondragover = (event) => {
+                event.preventDefault();
+                folderDropzone.classList.add('drag-active');
+            };
+            folderDropzone.ondragleave = () => folderDropzone.classList.remove('drag-active');
+            folderDropzone.ondrop = handleFolderDrop;
+        }
         if (startBtn) startBtn.onclick = startHostingSession;
         if (stopBtn) stopBtn.onclick = stopHostingSession;
         if (launchBtn) launchBtn.onclick = startGame;
@@ -37,39 +44,6 @@ window.HostModule = (function() {
             window.NovaApp.setStatus("Host module ready. Please select your game folder.");
         }
         renderControlDashboard();
-    }
-
-    async function handleFolderSelection() {
-        if (!window.showDirectoryPicker) {
-            openFallbackFolderPicker();
-            return;
-        }
-
-        try {
-            const dirHandle = await window.showDirectoryPicker();
-            selectedFilesMap.clear();
-            selectedSwfFiles = [];
-
-            // Recursively read directory contents (handles assets folder alongside main swf)
-            await readDirectoryRecursive(dirHandle, '');
-            updateSelectedFolder(dirHandle.name);
-
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                console.error(err);
-                if (['SecurityError', 'NotAllowedError', 'TypeError'].includes(err.name)) {
-                    openFallbackFolderPicker();
-                } else if (window.NovaApp) {
-                    window.NovaApp.setStatus(`Error reading folder: ${err.message}`);
-                }
-            }
-        }
-    }
-
-    function openFallbackFolderPicker() {
-        const folderInput = document.getElementById('host-folder-fallback');
-        if (folderInput) folderInput.click();
-        else if (window.NovaApp) window.NovaApp.setStatus('Folder selection is not available in this browser.');
     }
 
     function handleFallbackFolderSelection(event) {
@@ -86,12 +60,60 @@ window.HostModule = (function() {
             const segments = path.split('/');
             if (segments.length > 1) folderName = segments[0];
             const relativePath = segments.length > 1 ? segments.slice(1).join('/') : file.name;
-            selectedFilesMap.set(relativePath, file);
-            if (file.name.toLowerCase().endsWith('.swf')) {
-                selectedSwfFiles.push({ name: file.name, relativePath, file });
-            }
+            storeSelectedFile(file, relativePath);
         });
         updateSelectedFolder(folderName);
+    }
+
+    async function handleFolderDrop(event) {
+        event.preventDefault();
+        event.currentTarget.classList.remove('drag-active');
+        selectedFilesMap.clear();
+        selectedSwfFiles = [];
+        const items = Array.from(event.dataTransfer.items || []);
+        const entries = items.map((item) => item.webkitGetAsEntry && item.webkitGetAsEntry()).filter(Boolean);
+        try {
+            for (const entry of entries) {
+                if (entry.isDirectory) {
+                    await readDroppedDirectory(entry, '');
+                } else if (entry.isFile) {
+                    const file = await getDroppedFile(entry);
+                    storeSelectedFile(file, file.name);
+                }
+            }
+            const rootName = entries.find((entry) => entry.isDirectory)?.name || 'Dropped files';
+            updateSelectedFolder(rootName);
+        } catch (err) {
+            console.error(err);
+            if (window.NovaApp) window.NovaApp.setStatus(`Error reading dropped folder: ${err.message}`);
+        }
+    }
+
+    async function readDroppedDirectory(directoryEntry, pathPrefix) {
+        const reader = directoryEntry.createReader();
+        let entries;
+        do {
+            entries = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+            for (const entry of entries) {
+                if (entry.isDirectory) {
+                    await readDroppedDirectory(entry, `${pathPrefix}${entry.name}/`);
+                } else if (entry.isFile) {
+                    const file = await getDroppedFile(entry);
+                    storeSelectedFile(file, `${pathPrefix}${file.name}`);
+                }
+            }
+        } while (entries.length);
+    }
+
+    function getDroppedFile(entry) {
+        return new Promise((resolve, reject) => entry.file(resolve, reject));
+    }
+
+    function storeSelectedFile(file, relativePath) {
+        selectedFilesMap.set(relativePath, file);
+        if (file.name.toLowerCase().endsWith('.swf')) {
+            selectedSwfFiles.push({ name: file.name, relativePath, file });
+        }
     }
 
     function updateSelectedFolder(folderName) {
@@ -122,26 +144,6 @@ window.HostModule = (function() {
         if (startBtn) startBtn.disabled = false;
         if (window.NovaApp) {
             window.NovaApp.setStatus(`Loaded folder successfully. Found ${selectedSwfFiles.length} SWF file(s) and assets.`);
-        }
-    }
-
-    async function readDirectoryRecursive(dirHandle, pathPrefix) {
-        for await (const entry of dirHandle.values()) {
-            const currentPath = pathPrefix ? `${pathPrefix}/${entry.name}` : entry.name;
-            if (entry.kind === 'file') {
-                const file = await entry.getFile();
-                selectedFilesMap.set(currentPath, file);
-                
-                if (entry.name.toLowerCase().endsWith('.swf')) {
-                    selectedSwfFiles.push({
-                        name: entry.name,
-                        relativePath: currentPath,
-                        file: file
-                    });
-                }
-            } else if (entry.kind === 'directory') {
-                await readDirectoryRecursive(entry, currentPath);
-            }
         }
     }
 

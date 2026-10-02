@@ -28,6 +28,46 @@
     margin-bottom: 16px;
 }
 
+.folder-dropzone {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px dashed #555;
+    border-radius: 6px;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.folder-dropzone.drag-active {
+    border-color: #00ffcc;
+    background: rgba(0, 255, 204, 0.08);
+}
+
+.folder-picker-label {
+    display: block;
+    width: 100%;
+    margin: 0;
+    text-align: center;
+    cursor: pointer;
+}
+
+.folder-picker-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+    border: 0;
+}
+
+.folder-drop-hint {
+    color: #888;
+    font: 11px monospace;
+    text-align: center;
+}
+
 .form-group label {
     display: block;
     color: #888;
